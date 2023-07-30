@@ -81,13 +81,13 @@ def main():
 
     # 定义数据集（先使用默认的 MNIST）：
     training_data = datasets.MNIST(
-        root="data",
+        root="MNIST",
         train=True,
         download=True,
         transform=ToTensor(),
     )
     test_data = datasets.MNIST(
-        root="data",
+        root="MNIST",
         train=False,
         download=True,
         transform=ToTensor(),
@@ -104,13 +104,13 @@ def main():
     print("Done!")
 
     # 保存模型
-    os.mkdir("exp")
-    torch.save(model.state_dict(), "exp/model.pth")
+    os.mkdir("MNIST")
+    torch.save(model.state_dict(), "MNIST/model.pth")
     print("Saved PyTorch Model State to model.pth")
 
     # 加载模型
     model = NeuralNetwork().to(device)
-    model.load_state_dict(torch.load("exp/model.pth"))
+    model.load_state_dict(torch.load("MNIST/model.pth"))
 
     # 测试模型
     classes = [
