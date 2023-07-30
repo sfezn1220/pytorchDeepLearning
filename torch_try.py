@@ -1,4 +1,4 @@
-""" 训练部分的主函数；"""
+""" 按照 pytorch 官方教程，搭建一版模型；"""
 
 import os
 import torch
