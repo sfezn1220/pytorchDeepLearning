@@ -4,17 +4,20 @@ import os
 import torch
 import argparse
 import copy
+from torch.utils.data import DataLoader
 import yaml
 import logging
+
+from dataset import image_dataset
 
 
 def get_args():
     parser = argparse.ArgumentParser(description='training models.')
 
-    parser.add_argument('--gpu',
-                        type=int,
-                        default=-1,
-                        help='0 for gpu and -1 for cpu')
+    parser.add_argument('--gpu', type=int, default=-1, help='0 for gpu and -1 for cpu')
+    parser.add_argument('--config', type=str, required=True, help='yaml 格式的配置文件')
+    parser.add_argument('--train_data', type=str, required=True, help='训练集label文件，每行一条json格式数据')
+    parser.add_argument('--valid_data', type=str, required=True, help='验证集label文件，每行一条json格式数据')
 
     args = parser.parse_args()
     return args
@@ -35,34 +38,33 @@ def main():
     # Set random seed
     torch.manual_seed(777)
 
-    # symbol_table  # TODO
-
     # 读取 configs.yaml
-    with open(args.config, 'r') as fin:
-        configs = yaml.load(fin, Loader=yaml.FullLoader)
+    with open(args.config, 'r', encoding='utf-8') as r1:
+        configs = yaml.load(r1, Loader=yaml.FullLoader)
 
     train_conf = configs['dataset_conf']
-    cv_conf = copy.deepcopy(train_conf)
-    cv_conf['shuffle'] = False
+    valid_conf = copy.deepcopy(train_conf)
+    valid_conf['shuffle'] = False
 
     # 数据集：
-    train_dataset = Dataset(args.data_type, args.train_data, symbol_table,
-                            train_conf, args.bpe_model, non_lang_syms, True)
-    cv_dataset = Dataset(args.data_type,
-                         args.cv_data,
-                         symbol_table,
-                         cv_conf,
-                         args.bpe_model,
-                         non_lang_syms,
-                         partition=False)
+    train_dataset = image_dataset(
+        data_list_file=args.train_data,
+        conf=train_conf,
+    )
+    valid_dataset = image_dataset(
+        data_list_file=args.valid_data,
+        conf=valid_conf,
+    )
 
-    train_data_loader = DataLoader(train_dataset,
-                                   batch_size=None,
-                                   pin_memory=args.pin_memory,
-                                   num_workers=args.num_workers,
-                                   prefetch_factor=args.prefetch)
-    cv_data_loader = DataLoader(cv_dataset,
-                                batch_size=None,
-                                pin_memory=args.pin_memory,
-                                num_workers=args.num_workers,
-                                prefetch_factor=args.prefetch)
+    train_data_loader = DataLoader(
+        train_dataset,
+        batch_size=None,
+        num_workers=0,
+    )
+    valid_data_loader = DataLoader(
+        valid_dataset,
+        batch_size=None,
+        num_workers=0,
+    )
+
+    
