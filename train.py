@@ -47,24 +47,4 @@ def main():
     valid_conf['shuffle'] = False
 
     # 数据集：
-    train_dataset = image_dataset(
-        data_list_file=args.train_data,
-        conf=train_conf,
-    )
-    valid_dataset = image_dataset(
-        data_list_file=args.valid_data,
-        conf=valid_conf,
-    )
 
-    train_data_loader = DataLoader(
-        train_dataset,
-        batch_size=None,
-        num_workers=0,
-    )
-    valid_data_loader = DataLoader(
-        valid_dataset,
-        batch_size=None,
-        num_workers=0,
-    )
-
-    
