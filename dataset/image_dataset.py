@@ -28,6 +28,9 @@ class ImageDataList(IterableDataset):
         for data in self.data_list:
             yield data
 
+    def __len__(self):
+        return len(self.data_list)
+
 
 def get_image_dataloader(
         train_data: str,
@@ -88,3 +91,6 @@ if __name__ == "__main__":
         for batch_idx, batch in enumerate(train_data_loader):
             if batch_idx == 0:
                 print(batch_idx, batch)
+
+    steps_per_epoch = len(train_data_loader)
+    print(f"steps_per_epoch = {steps_per_epoch}")
