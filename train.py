@@ -6,8 +6,10 @@ import argparse
 import copy
 import yaml
 import logging
+import torch.nn as nn
 
 from dataset import get_image_dataloader
+from models import VGG16
 
 
 def get_args():
@@ -27,6 +29,8 @@ class HyperParameters:
     gpu = "0"
     config = {
         "shuffle": True,
+        "lr": 1e-4,
+        "epochs": 1000,
     }
 
     train_data = "G:\\Images\\2.labeled_json_0902.txt"
@@ -41,8 +45,10 @@ def main():
     gpu = str(hp.gpu)
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu
     if gpu == "-1":
+        device = "cpu"
         logging.info(f"Use device: CPU.")
     elif gpu == "0":
+        device = "cuda"
         logging.info(f"Use device: GPU {gpu}.")
     else:
         raise ValueError(f"\"--gpu\" must in [-1, 0], while input is {gpu}")
@@ -70,6 +76,28 @@ def main():
 
     steps_per_epoch = len(train_data_loader)
     print(f"steps_per_epoch = {steps_per_epoch}")
+
+    # 模型
+    model = VGG16(n_classes=100)
+    print(model)
+
+    # 损失函数、优化器
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=train_conf["lr"])
+
+    # 正式开始训练
+    train_losses = []
+    train_accu = []
+    test_losses = []
+    test_accu = []
+    for epoch in range(train_conf["epochs"]):
+        for i, batch_i in enumerate(train_data_loader):
+            images = batch_i["path"]
+            labels = batch_i["character_id"]
+            print(f"batch: {i}")
+            print(f"images: {images}")
+            print(f"labels: {labels}")
+            print()
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 """ 定义：图像数据集；"""
+import tqdm
 import random
 import torch
+import cv2
 from torch.utils.data import IterableDataset
 from utils import read_json_lists
 from torch.utils.data import DataLoader
@@ -15,9 +17,19 @@ class ImageDataList(IterableDataset):
         :return:
         """
         super(ImageDataList).__init__()
-        self.data_list = read_json_lists(data_list_file)  # 输入数据集，list 格式
+        self.data_list = self.get_images_and_labels()  # 输入数据集，list 格式
         self.shuffle = conf.get('shuffle', False)  # 是否在每个epoch都打乱数据集
         self.epoch = -1  # 按照epoch设置random的随机种子，保证可复现
+
+    @staticmethod
+    def get_images_and_labels():
+        """ 读取图像、生成label标签；"""
+        data_list = []
+        labels_collect = []
+        for data in tqdm.tqdm(read_json_lists(data_list_file)):
+            data["image"] = cv2.imread(data["path"])
+            data_list.append(data)
+        return data_list
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
