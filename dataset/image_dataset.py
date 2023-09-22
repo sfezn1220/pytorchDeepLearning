@@ -6,6 +6,8 @@ import cv2
 from torch.utils.data import IterableDataset
 from utils import read_json_lists
 from torch.utils.data import DataLoader
+import torchvision.transforms as transforms
+import torch.nn.functional as F
 
 
 class ImageDataList(IterableDataset):
@@ -17,17 +19,21 @@ class ImageDataList(IterableDataset):
         :return:
         """
         super(ImageDataList).__init__()
-        self.data_list = self.get_images_and_labels()  # 输入数据集，list 格式
+        self.data_list = self.get_images_and_labels(data_list_file)  # 输入数据集，list 格式
         self.shuffle = conf.get('shuffle', False)  # 是否在每个epoch都打乱数据集
         self.epoch = -1  # 按照epoch设置random的随机种子，保证可复现
 
+        self.load_image_tensor = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor()
+        ])
+
     @staticmethod
-    def get_images_and_labels():
-        """ 读取图像、生成label标签；"""
+    def get_images_and_labels(data_list_file):
+        """ 最开始的 读取 label 文件的操作；"""
         data_list = []
-        labels_collect = []
-        for data in tqdm.tqdm(read_json_lists(data_list_file)):
-            data["image"] = cv2.imread(data["path"])
+        for data in read_json_lists(data_list_file):
             data_list.append(data)
         return data_list
 
@@ -38,6 +44,11 @@ class ImageDataList(IterableDataset):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
+            label_id = torch.tensor(int(data["label_id"]))
+            data["label"] = F.one_hot(label_id, num_classes=160).float()
+            img = cv2.imread(data["path"])
+            img = self.load_image_tensor(img)  # 尺寸变为 224 * 224、转换成 tensor；
+            data["image"] = img
             yield data
 
     def __len__(self):
@@ -82,11 +93,13 @@ def get_image_dataloader(
         num_workers=num_workers,
     )
 
+    print(f"steps_per_epoch = {len(train_data_loader)}")
+
     return train_data_loader, valid_data_loader
 
 
 if __name__ == "__main__":
-    data_list_file = "G:\\Images\\2.labeled_json_0902.txt"  # 测试数据，每行就是一条数据
+    data_list_file = "G:\\Images\\3.labeled_json_0921.train.txt"  # 测试数据，每行就是一条数据
     conf = {"shuffle": True}  # 测试 shuffle 功能
 
     # 测试 dataloader 的功能
@@ -95,14 +108,14 @@ if __name__ == "__main__":
         valid_data=data_list_file,
         train_conf=conf,
         valid_conf=conf,
-        batch_size=16,
+        batch_size=256,
     )
 
     # 测试是 shuffle 功能：
     for epoch in range(5):
         for batch_idx, batch in enumerate(train_data_loader):
-            if batch_idx == 0:
-                print(batch_idx, batch)
-
-    steps_per_epoch = len(train_data_loader)
-    print(f"steps_per_epoch = {steps_per_epoch}")
+            # if batch_idx == 0:
+            print(f"batch[{batch_idx}]")
+            print(f"ids[{len(batch['label_id'])}] = {batch['label_id']}")
+            print(f"shape = {batch['image'].shape}")
+            print()

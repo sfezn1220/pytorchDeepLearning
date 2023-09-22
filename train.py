@@ -29,12 +29,14 @@ class HyperParameters:
     gpu = "0"
     config = {
         "shuffle": True,
-        "lr": 1e-4,
+        "lr": 1e-3,
         "epochs": 1000,
     }
 
-    train_data = "G:\\Images\\2.labeled_json_0902.txt"
-    valid_data = train_data
+    train_data = "G:\\Images\\3.labeled_json_0921.train.txt"
+    valid_data = "G:\\Images\\3.labeled_json_0921.valid.txt"
+
+    ckpt_path = "F:\\models_images\\demo"
 
 
 def main():
@@ -70,15 +72,12 @@ def main():
         valid_data=hp.valid_data,
         train_conf=train_conf,
         valid_conf=valid_conf,
-        batch_size=16,
+        batch_size=64,
         num_workers=0,
     )
 
-    steps_per_epoch = len(train_data_loader)
-    print(f"steps_per_epoch = {steps_per_epoch}")
-
     # 模型
-    model = VGG16(n_classes=100)
+    model = VGG16(n_classes=160).to(device)
     print(model)
 
     # 损失函数、优化器
@@ -86,18 +85,74 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=train_conf["lr"])
 
     # 正式开始训练
-    train_losses = []
-    train_accu = []
-    test_losses = []
-    test_accu = []
     for epoch in range(train_conf["epochs"]):
-        for i, batch_i in enumerate(train_data_loader):
-            images = batch_i["path"]
-            labels = batch_i["character_id"]
-            print(f"batch: {i}")
-            print(f"images: {images}")
-            print(f"labels: {labels}")
-            print()
+
+        model.train()
+        correct_ids = 0
+        total_ids = 0
+        train_loss = 0.0
+        for batch_idx, batch in enumerate(train_data_loader):
+            images = batch["image"].to(device)
+            labels = batch["label"].to(device)
+
+            # 前向计算
+            pred = model(images)
+            loss = criterion(pred, labels)
+
+            # 反向传播
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+            # 计算 accuracy
+            pred_id = pred.argmax(0)
+            correct_ids += pred_id.eq(labels).sum().item()
+            total_ids += labels.size(0)
+            train_loss += loss.item()
+
+            # 展示日志
+            if batch_idx % 10 == 0:
+                print(f"epoch[{epoch}], steps[{batch_idx}]: loss = {loss.item()}")
+
+        # end of epoch
+        train_accuracy = 100. * correct_ids / total_ids
+        train_loss = 100. * train_loss / total_ids
+        print(f"\nepoch[{epoch}] end: train_total_loss = {train_loss}, train_accuracy = {train_accuracy}\n")
+
+        # save ckpt
+        path = os.path.join(hp.ckpt_path, 'epoch_{:04d}.pth'.format(epoch))
+        torch.save(
+            {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss,
+            }, path
+        )
+
+        # eval
+        model.eval()
+        correct_ids = 0
+        total_ids = 0
+        valid_loss = 0.0
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(valid_data_loader):
+                images = batch["image"].to(device)
+                labels = batch["label"].to(device)
+
+                # 前向计算
+                pred = model(images)
+                loss = criterion(pred, labels)
+
+                # 计算 accuracy
+                pred_id = pred.argmax(0)
+                correct_ids += pred_id.eq(labels).sum().item()
+                total_ids += labels.size(0)
+                valid_loss += loss.item()
+
+        valid_accuracy = 100. * correct_ids / total_ids
+        valid_loss = 100. * valid_loss / total_ids
+        print(f"\nvalid: valid_total_loss = {valid_loss}, valid_accuracy = {valid_accuracy}\n")
 
 
 if __name__ == "__main__":
