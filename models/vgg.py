@@ -4,18 +4,21 @@ import torch.nn as nn
 
 
 class VGG16(nn.Module):
-    def __init__(self, n_classes):
+    def __init__(self, conf: dict):
         """ 初始化 VGG 网络结构；"""
         super().__init__()
 
-        self.n_classes = n_classes  # 分类的类别数量
+        self.n_classes = conf["n_classes"]  # 分类的类别数量
         self.in_channels = 3  # 输入图像的通道处，默认为RGB三通道
 
         self.num_blocks_and_out_channels = [[2, 64], [2, 128], [3, 256], [3, 512], [3, 512]]
-        self.final_out_channels = self.num_blocks_and_out_channels[-1][-1] * 7 * 7
+        self.input_shape = conf["input_shape"]  # 默认 [224, 224]
+        self.final_out_channels = self.num_blocks_and_out_channels[-1][-1] \
+                                  * self.input_shape[0] // (2 ** len(self.num_blocks_and_out_channels)) \
+                                  * self.input_shape[0] // (2 ** len(self.num_blocks_and_out_channels))  # 512 * 7 * 7
 
-        self.backbone = self.get_backbone()
-        self.final_block = self.get_final_block()
+        self.backbone = self.get_backbone()  # VGG 模型的前一半
+        self.final_block = self.get_final_block()  # VGG 模型的后一半
 
     def forward(self, x):
         x = self.backbone(x)
