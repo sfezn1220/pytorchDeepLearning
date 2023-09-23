@@ -35,6 +35,7 @@ class ImageDataList(IterableDataset):
 
     def set_epoch(self, epoch):
         self.epoch = epoch
+        print(f"dataset: set epoch = {epoch}")
 
     def get_images_and_labels(self, data_list_file):
         """ 最开始的 读取 label 文件的操作；"""

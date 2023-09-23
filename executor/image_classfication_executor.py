@@ -107,12 +107,14 @@ class Executor:
         for epoch in range(last_epoch+1, self.max_epochs):
 
             # 训练一个 epoch
+            train_data_loader.dataset.set_epoch(epoch)
             self.train_one_epoch(model, train_data_loader, epoch)
 
             # save ckpt
             self.save_ckpt(model, epoch)
 
             # eval
+            valid_data_loader.dataset.set_epoch(epoch)
             self.valid_one_epoch(model, valid_data_loader, epoch)
 
     def train_one_epoch(self, model, data_loader, epoch):
@@ -161,7 +163,8 @@ class Executor:
         et = time.time()
         log = (f"epoch end, {round((et - st)/60, 2)} minutes,"
                f"\n"
-               f"train: epoch[{epoch}]: total_loss = {round(train_loss, 2)}, total_accuracy = {train_accuracy}%\n")
+               f"train: epoch[{epoch}]: "
+               f"total_loss = {round(train_loss, 2)}, total_accuracy = {round(train_accuracy, 2)}%\n")
         print(log)
         self.write_training_log(log, "a")
 
@@ -204,8 +207,9 @@ class Executor:
         train_accuracy = 100. * correct_ids / total_ids
         train_loss = train_loss / batch_per_epoch
         et = time.time()
-        log = (f"epoch end, {round((et - st)/60, 2)} minutes,"
+        log = (f"epoch end, {round((et - st) / 60, 2)} minutes,"
                f"\n"
-               f"valid: epoch[{epoch}]: total_loss = {round(train_loss, 2)}, total_accuracy = {train_accuracy}%\n")
+               f"valid: epoch[{epoch}]: "
+               f"total_loss = {round(train_loss, 2)}, total_accuracy = {round(train_accuracy, 2)}%\n")
         print(log)
         self.write_training_log(log, "a")
