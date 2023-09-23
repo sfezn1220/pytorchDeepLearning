@@ -39,11 +39,13 @@ def main():
     # valid_data_conf['shuffle'] = False
 
     # 数据集：
-    train_data_loader, valid_data_loader = get_image_dataloader(
-        train_data=train_data_conf["train_data"],
-        valid_data=valid_data_conf["valid_data"],
-        train_conf=train_data_conf,
-        valid_conf=valid_data_conf,
+    train_data_loader = get_image_dataloader(
+        data_path=train_data_conf["train_data"],
+        data_conf=train_data_conf,
+    )
+    valid_data_loader = get_image_dataloader(
+        data_path=valid_data_conf["valid_data"],
+        data_conf=valid_data_conf,
     )
 
     # 模型
