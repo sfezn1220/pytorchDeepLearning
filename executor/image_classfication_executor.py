@@ -213,3 +213,68 @@ class Executor:
                f"total_loss = {round(train_loss, 2)}, total_accuracy = {round(train_accuracy, 2)}%\n")
         print(log)
         self.write_training_log(log, "a")
+
+    def test(self, model, data_loader):
+        """测试"""
+        # 尝试加载预训练模型
+        last_epoch, model_may = self.load_ckpt_auto(model)
+        if model_may is not None:
+            model = model_may
+        else:
+            raise ValueError(f"No checkpoint find. Exit.")
+
+        model.eval()
+
+        correct_ids = 0
+        total_ids = 0
+
+        batch_per_epoch = len(data_loader)
+        log_every_steps = min(batch_per_epoch-1, self.log_every_steps)
+
+        st = time.time()
+        for batch_idx, batch in enumerate(data_loader):
+
+            images = batch["image"].to(self.device)
+            labels = batch["label_one_hot"].to(self.device)
+            labels_id = batch["label_id"].to(self.device)
+
+            # 前向计算
+            pred = model(images)
+
+            # 计算 accuracy
+            x, pred_id = pred.max(1)
+            correct_ids += pred_id.eq(labels_id).sum().item()
+            total_ids += labels.size(0)
+
+            # 展示日志
+            if batch_idx % log_every_steps == 0:
+                log = f"test: steps[{batch_idx}/{batch_per_epoch}]: done"
+                print(log)
+
+            # 展示结果
+            # self.write_test_result(batch, pred_id, last_epoch)  # TODO
+            # 对于每条测试结果：
+            for i in range(len(batch)):
+                true_i = batch["label_id"][i]
+                pred_i = pred_id[i]
+                if true_i == pred_i:
+                    print(f"{batch['path'][i]}")
+                    print(f"true[{i}] = {true_i}, pred[{i}] = {pred_i}\n")
+
+        # end of epoch
+        train_accuracy = 100. * correct_ids / total_ids
+        et = time.time()
+        log = (f"test cost {round((et - st) / 60, 2)} minutes,"
+               f"\n"
+               f"total_accuracy = {round(train_accuracy, 2)}%\n")
+        print(log)
+
+    def write_test_result(self, batch, pred_id, epoch):
+        """保存每一个测试用例的测试结果；"""
+
+        # 测试结果的保存路径
+        test_save_dir = os.path.join(self.ckpt_path, f"test_epoch-{epoch}")
+        if not os.path.exists(test_save_dir):
+            os.makedirs(test_save_dir)
+
+        # TODO

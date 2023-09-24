@@ -8,6 +8,7 @@ ckpt_path: "F:\\models_images\\demo"
 
 train_data: "G:\\Images\\3.labeled_json_0923.train.txt"
 valid_data: "G:\\Images\\3.labeled_json_0923.valid.txt"
+test_data: "G:\\Images\\3.labeled_json_0923.test.txt"
 shuffle: True
 n_classes: 160
 input_shape: [224, 224]
