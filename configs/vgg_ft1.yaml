@@ -1,0 +1,18 @@
+# VGG base 模型的所有参数；
+
+gpu: 0
+lr: 2e-4
+batch_size: 64
+epochs: 300
+ckpt_path: "F:\\models_images\\ft1"
+
+train_data: "G:\\Images\\3.labeled_json_0923.train.txt"
+valid_data: "G:\\Images\\3.labeled_json_0923.valid.txt"
+test_data: "G:\\Images\\3.labeled_json_0923.test.txt"
+shuffle: True
+n_classes: 160
+input_shape: [224, 224]
+
+max_ckpt_save: 5  # 最多同时存储这么多 ckpt 文件
+
+log_every_steps: 10  # 每多少个step展示一次日志

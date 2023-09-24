@@ -93,6 +93,8 @@ class Executor:
     def run(self, model, train_data_loader, valid_data_loader):
 
         # 尝试加载与训练模型
+        os.makedirs(self.ckpt_path, exist_ok=True)
+
         last_epoch = -1
         last_epoch_may, model_may = self.load_ckpt_auto(model)
         if model_may is not None:

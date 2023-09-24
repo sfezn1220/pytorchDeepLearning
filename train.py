@@ -15,7 +15,7 @@ from executor import Executor
 def train():
     """训练的代码"""
     # config 文件
-    conf_file = "configs\\vgg_base.yaml"
+    conf_file = "configs\\vgg_ft1.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -75,7 +75,7 @@ def train():
 def test():
     """测试的代码"""
     # config 文件
-    conf_file = "configs\\vgg_base.yaml"
+    conf_file = "configs\\vgg_ft1.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -120,5 +120,5 @@ def test():
 
 
 if __name__ == "__main__":
-    # train()
-    test()
+    train()
+    # test()
