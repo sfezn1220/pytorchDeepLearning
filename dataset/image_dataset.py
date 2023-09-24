@@ -29,16 +29,16 @@ class ImageDataList(IterableDataset):
 
         self.load_image_tensor = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Resize(self.input_shape),
-            transforms.RandomHorizontalFlip(p=0.5),  # 水平翻转
-            transforms.RandomVerticalFlip(p=0.5),    # 竖直翻转
-            transforms.Pad((                         # 随机 pad
-                random.randint(1, 40),
-                random.randint(1, 40),
-                random.randint(1, 40),
-                random.randint(1, 40),
-            )),
-            transforms.RandomRotation([-90, 90]),
+            # transforms.Resize(self.input_shape),
+            # transforms.RandomHorizontalFlip(p=0.2),  # 水平翻转
+            # transforms.RandomVerticalFlip(p=0.2),    # 竖直翻转
+            # transforms.Pad((                         # 随机 pad
+            #     random.randint(1, 40),
+            #     random.randint(1, 40),
+            #     random.randint(1, 40),
+            #     random.randint(1, 40),
+            # )),
+            # transforms.RandomRotation([-90, 90]),
 
             transforms.Resize(self.input_shape),
             transforms.ToTensor()
@@ -99,7 +99,7 @@ def get_image_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "..\configs\\vgg_base.yaml"
+    conf_file = "..\configs\\vgg_ft1.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
