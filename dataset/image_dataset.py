@@ -38,7 +38,7 @@ class ImageDataList(IterableDataset):
                 random.randint(1, 40),
                 random.randint(1, 40),
             )),
-            # transforms.RandomRotation([-90, 90]),
+            transforms.RandomRotation([-45, 45]),
 
             transforms.Resize(self.input_shape),
             transforms.ToTensor()
