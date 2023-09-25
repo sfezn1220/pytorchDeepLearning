@@ -30,14 +30,14 @@ class ImageDataList(IterableDataset):
         self.load_image_tensor = transforms.Compose([
             transforms.ToPILImage(),
             # transforms.Resize(self.input_shape),
-            # transforms.RandomHorizontalFlip(p=0.2),  # 水平翻转
-            # transforms.RandomVerticalFlip(p=0.2),    # 竖直翻转
-            # transforms.Pad((                         # 随机 pad
-            #     random.randint(1, 40),
-            #     random.randint(1, 40),
-            #     random.randint(1, 40),
-            #     random.randint(1, 40),
-            # )),
+            transforms.RandomHorizontalFlip(p=0.3),  # 水平翻转
+            transforms.RandomVerticalFlip(p=0.3),    # 竖直翻转
+            transforms.Pad((                         # 随机 pad
+                random.randint(1, 40),
+                random.randint(1, 40),
+                random.randint(1, 40),
+                random.randint(1, 40),
+            )),
             # transforms.RandomRotation([-90, 90]),
 
             transforms.Resize(self.input_shape),

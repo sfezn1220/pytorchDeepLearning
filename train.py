@@ -15,7 +15,7 @@ from executor import Executor
 def train():
     """训练的代码"""
     # config 文件
-    conf_file = "configs\\vgg_ft1.yaml"
+    conf_file = "configs\\vgg_ft2.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -37,7 +37,7 @@ def train():
     # 读取 configs.yaml
     train_data_conf = configs
     valid_data_conf = copy.deepcopy(train_data_conf)
-    # valid_data_conf['shuffle'] = False
+    valid_data_conf['shuffle'] = False
 
     # 数据集：
     train_data_loader = get_image_dataloader(
@@ -75,7 +75,7 @@ def train():
 def test():
     """测试的代码"""
     # config 文件
-    conf_file = "configs\\vgg_ft1.yaml"
+    conf_file = "configs\\vgg_ft2.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
