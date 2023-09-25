@@ -3,7 +3,7 @@
 gpu: 0
 lr: 2e-4
 batch_size: 64
-epochs: 50
+epochs: 100
 ckpt_path: "F:\\models_images\\ft3"
 
 train_data: "G:\\Images\\3.labeled_json_0923.train.txt"

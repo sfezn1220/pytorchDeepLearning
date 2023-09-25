@@ -46,6 +46,8 @@ class Executor:
         # 删除过多的ckpt文件
         ckpt_list = []
         for file in os.listdir(self.ckpt_path):
+            if "epoch-0049.pth" in file:  # 特例，单独保存下这个ckpt、不删除
+                continue
             if not file.startswith("model_epoch-"):
                 continue
             epoch = int(file.lstrip("model_epoch-").rstrip(".pth"))
