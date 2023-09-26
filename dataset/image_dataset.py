@@ -30,8 +30,12 @@ class ImageDataList(IterableDataset):
         self.load_image_tensor = transforms.Compose([
             transforms.ToPILImage(),
             # transforms.Resize(self.input_shape),
+
+            # ft2 添加
             transforms.RandomHorizontalFlip(p=0.3),  # 水平翻转
             transforms.RandomVerticalFlip(p=0.3),    # 竖直翻转
+
+            # ft3 添加
             transforms.Pad((                         # 随机 pad
                 random.randint(1, 40),
                 random.randint(1, 40),
@@ -39,6 +43,17 @@ class ImageDataList(IterableDataset):
                 random.randint(1, 40),
             )),
             transforms.RandomRotation([-45, 45]),
+
+            # ft4 添加
+            transforms.GaussianBlur(
+                random.choice([3, 5, 7, 9, 11]),
+            ),
+            transforms.ColorJitter(
+                brightness=(0.7, 1.3),  # 随机：亮度
+                contrast=(0.7, 1.3),    # 随机：对比度
+                saturation=(0.7, 1.3),  # 随机：饱和度
+                hue=(-0.3, 0.3),        # 随机：色调
+            ),
 
             transforms.Resize(self.input_shape),
             transforms.ToTensor()
