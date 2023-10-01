@@ -20,44 +20,17 @@ class ImageDataList(IterableDataset):
         :return:
         """
         super(ImageDataList).__init__()
+        self.conf = conf
+
         self.shuffle = conf['shuffle']
-        self.input_shape = conf['input_shape']
+        self.input_shape = conf['input_shape']  # 默认 224*224
         self.n_classes = conf['n_classes']
         self.data_list = self.get_images_and_labels(data_list_file)  # 输入数据集，list 格式
 
         self.epoch = -1  # 每个epoch的随机打乱的种子
 
-        self.load_image_tensor = transforms.Compose([
-            transforms.ToPILImage(),
-            # transforms.Resize(self.input_shape),
-
-            # ft2 添加
-            transforms.RandomHorizontalFlip(p=0.3),  # 水平翻转
-            transforms.RandomVerticalFlip(p=0.3),    # 竖直翻转
-
-            # ft3 添加
-            transforms.Pad((                         # 随机 pad
-                random.randint(1, 40),
-                random.randint(1, 40),
-                random.randint(1, 40),
-                random.randint(1, 40),
-            )),
-            transforms.RandomRotation([-45, 45]),
-
-            # ft4 添加
-            transforms.GaussianBlur(
-                random.choice([3, 5, 7, 9, 11]),
-            ),
-            transforms.ColorJitter(
-                brightness=(0.7, 1.3),  # 随机：亮度
-                contrast=(0.7, 1.3),    # 随机：对比度
-                saturation=(0.7, 1.3),  # 随机：饱和度
-                hue=(-0.3, 0.3),        # 随机：色调
-            ),
-
-            transforms.Resize(self.input_shape),
-            transforms.ToTensor()
-        ])
+        # 数据增强部分
+        self.data_aug_transforms = self.get_data_aug_transforms()
 
     def set_epoch(self, epoch):
         self.epoch = epoch
@@ -75,11 +48,101 @@ class ImageDataList(IterableDataset):
     def __iter__(self):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
+
+        self.data_aug_transforms = self.get_data_aug_transforms()  # 数据增强
+
         for data in self.data_list:
             img = cv2.imread(data["path"])
-            img = self.load_image_tensor(img)  # 尺寸变为 224 * 224、转换成 tensor；
+            img = self.data_aug_transforms(img)  # 尺寸变为 224 * 224、转换成 tensor；
             data["image"] = img
             yield data
+
+    def get_data_aug_transforms(self):
+        """定义：数据增强函数；"""
+
+        # 读取图像
+        aug_func_list = [
+            transforms.ToPILImage(),
+            transforms.Resize(self.input_shape),
+        ]
+
+        # 水平翻转
+        if self.conf['aug_horizontal_flip'] is True:
+            p = self.conf['aug_horizontal_flip_p']
+            aug_func_list.append(
+                transforms.RandomHorizontalFlip(p=p)
+            )
+            print(f"use aug_horizontal_flip")
+
+        # 竖直翻转
+        if self.conf['aug_vertical_flip'] is True:
+            p = self.conf['aug_vertical_flip_p']
+            aug_func_list.append(
+                transforms.RandomVerticalFlip(p=p)
+            )
+            print(f"use aug_vertical_flip")
+
+        # 随机 pad
+        if self.conf['aug_pad'] is True:
+            p = self.conf['aug_pad_p']
+            min_pad = self.conf['aug_pad_min']
+            max_pad = self.conf['aug_pad_max']
+            if random.random() < p:
+                aug_func_list.append(
+                    transforms.Pad((  # 随机 pad
+                        random.randint(min_pad, max_pad),
+                        random.randint(min_pad, max_pad),
+                        random.randint(min_pad, max_pad),
+                        random.randint(min_pad, max_pad),
+                    ))
+                )
+            print(f"use aug_pad")
+
+        # 随机旋转
+        if self.conf['aug_rotation'] is True:
+            p = self.conf['aug_rotation_p']
+            min_rot = self.conf['aug_rotation_min']
+            max_rot = self.conf['aug_rotation_max']
+            if random.random() < p:
+                aug_func_list.append(
+                    transforms.RandomRotation([min_rot, max_rot])
+                )
+            print(f"use aug_rotation")
+
+        # 随机高斯模糊
+        if self.conf['aug_GaussianBlur'] is True:
+            p = self.conf['aug_GaussianBlur_p']
+            gaussian_blur_list = self.conf['aug_GaussianBlur_list']  # [3, 5, 7, 9, 11]
+            if random.random() < p:
+                aug_func_list.append(
+                    transforms.GaussianBlur(
+                        random.choice(gaussian_blur_list),
+                    )
+                )
+            print(f"use aug_GaussianBlur")
+
+        # 随机亮度调整
+        if self.conf['aug_ColorJitter'] is True:
+            p = self.conf['aug_ColorJitter_p']
+            value = self.conf['aug_ColorJitter_value']  # 0.3
+            if random.random() < p:
+                aug_func_list.append(
+                    transforms.ColorJitter(
+                        brightness=(1-value, 1+value),  # 随机：亮度
+                        contrast=(1-value, 1+value),  # 随机：对比度
+                        saturation=(1-value, 1+value),  # 随机：饱和度
+                        hue=(-value, value),  # 随机：色调
+                    )
+                )
+            print(f"use aug_ColorJitter")
+
+        # 将图像转换为 tensor
+        aug_func_list += [
+            transforms.Resize(self.input_shape),
+            transforms.ToTensor(),
+        ]
+
+        return transforms.Compose(aug_func_list)
 
     def __len__(self):
         return len(self.data_list)
