@@ -1,0 +1,44 @@
+# VGG base 模型的所有参数；
+
+gpu: 0
+lr: 2e-4
+batch_size: 64
+epochs: 100
+ckpt_path: "F:\\models_images\\new2"
+
+train_data: "G:\\Images\\3.labeled_json_0923.train.txt"
+valid_data: "G:\\Images\\3.labeled_json_0923.valid.txt"
+test_data: "G:\\Images\\3.labeled_json_0923.test.txt"
+n_classes: 160
+input_shape: [224, 224]
+
+max_ckpt_save: 5  # 最多同时存储这么多 ckpt 文件
+
+log_every_steps: 10  # 每多少个step展示一次日志
+
+# 数据集的操作
+shuffle: True
+
+aug_horizontal_flip: True  # 水平翻转
+aug_horizontal_flip_p: 0.3  # 水平翻转的概率
+
+aug_vertical_flip: True  # 竖直翻转
+aug_vertical_flip_p: 0.3  # 竖直翻转的概率
+
+aug_pad: True  # 随机 pad
+aug_pad_p: 0.35  # 随机 pad 的概率
+aug_pad_min: 20  # 随机 pad 的最小值（像素数）
+aug_pad_max: 60  # 随机 pad 的最大值（像素数）
+
+aug_rotation: True  # 随机旋转
+aug_rotation_p: 0.35  # 随机旋转的概率
+aug_rotation_min: -45  # 随机旋转的最小值（角度数）
+aug_rotation_max: 45  # 随机旋转的最大值（角度数）
+
+aug_GaussianBlur: False  # 随机高斯模糊
+aug_GaussianBlur_p: 0.3  # 随机高斯模糊的概率
+aug_GaussianBlur_list: [3, 5, 7, 9, 11]  # 高斯模糊核大小
+
+aug_ColorJitter: False  # 随机亮度调整
+aug_ColorJitter_p: 0.3  # 随机亮度调整的概率
+aug_ColorJitter_value: 0.3  # 随机亮度调整的数值（0~1之间）

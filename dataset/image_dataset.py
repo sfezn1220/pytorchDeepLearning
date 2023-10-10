@@ -63,7 +63,7 @@ class ImageDataList(IterableDataset):
         # 读取图像
         aug_func_list = [
             transforms.ToPILImage(),
-            transforms.Resize(self.input_shape),
+            # transforms.Resize(self.input_shape),
         ]
 
         # 水平翻转

@@ -261,9 +261,9 @@ class Executor:
             for i in range(len(batch)):
                 true_i = batch["label_id"][i]
                 pred_i = pred_id[i]
-                if true_i == pred_i:
-                    print(f"{batch['path'][i]}")
-                    print(f"true[{i}] = {true_i}, pred[{i}] = {pred_i}\n")
+                # if true_i == pred_i:
+                #     print(f"{batch['path'][i]}")
+                #     print(f"true[{i}] = {true_i}, pred[{i}] = {pred_i}\n")
 
         # end of epoch
         train_accuracy = 100. * correct_ids / total_ids

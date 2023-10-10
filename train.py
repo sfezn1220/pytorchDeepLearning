@@ -12,10 +12,10 @@ from models import VGG16
 from executor import Executor
 
 
-def train():
+def train(model = "vgg_" + "new21"):
     """训练的代码"""
     # config 文件
-    conf_file = "configs\\vgg_new1.yaml"
+    conf_file = f"configs\\{model}.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -81,7 +81,7 @@ def train():
 def test():
     """测试的代码"""
     # config 文件
-    conf_file = "configs\\vgg_new1.yaml"
+    conf_file = "configs\\vgg_ft4.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -97,10 +97,20 @@ def test():
     else:
         raise ValueError(f"\"--gpu\" must in [-1, 0], while input is {gpu}")
 
+    test_data_conf = copy.deepcopy(configs)
+    test_data_conf['log_every_steps'] = 1
+    test_data_conf['shuffle'] = False
+    test_data_conf['aug_horizontal_flip'] = False
+    test_data_conf['aug_vertical_flip'] = False
+    test_data_conf['aug_pad'] = False
+    test_data_conf['aug_rotation'] = False
+    test_data_conf['aug_GaussianBlur'] = False
+    test_data_conf['aug_ColorJitter'] = False
+
     # 测试数据：
     test_data_loader = get_image_dataloader(
-        data_path=configs["test_data"],
-        data_conf=configs,
+        data_path=test_data_conf["test_data"],
+        data_conf=test_data_conf,
     )
 
     # 模型
@@ -112,7 +122,7 @@ def test():
 
     # 正式测试
     executor = Executor(
-        trainer_conf=configs,
+        trainer_conf=test_data_conf,
         criterion=None,
         optimizer=optimizer,
         device=device,
@@ -126,5 +136,8 @@ def test():
 
 
 if __name__ == "__main__":
-    train()
+    train(model="vgg_" + "new21")
+
+    train(model="vgg_" + "new22")
+
     # test()
