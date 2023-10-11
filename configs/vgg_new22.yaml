@@ -4,7 +4,7 @@ gpu: 0
 lr: 2e-4
 batch_size: 64
 epochs: 100
-ckpt_path: "F:\\models_images\\new2"
+ckpt_path: "F:\\models_images\\new22"
 
 train_data: "G:\\Images\\3.labeled_json_0923.train.txt"
 valid_data: "G:\\Images\\3.labeled_json_0923.valid.txt"
@@ -28,7 +28,7 @@ aug_vertical_flip_p: 0.3  # 竖直翻转的概率
 aug_pad: True  # 随机 pad
 aug_pad_p: 0.35  # 随机 pad 的概率
 aug_pad_min: 20  # 随机 pad 的最小值（像素数）
-aug_pad_max: 60  # 随机 pad 的最大值（像素数）
+aug_pad_max: 50  # 随机 pad 的最大值（像素数）
 
 aug_rotation: True  # 随机旋转
 aug_rotation_p: 0.35  # 随机旋转的概率

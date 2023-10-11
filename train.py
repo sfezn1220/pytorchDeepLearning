@@ -12,7 +12,7 @@ from models import VGG16
 from executor import Executor
 
 
-def train(model = "vgg_" + "new21"):
+def train(model="vgg_" + "new21"):
     """训练的代码"""
     # config 文件
     conf_file = f"configs\\{model}.yaml"
@@ -78,10 +78,10 @@ def train(model = "vgg_" + "new21"):
     )
 
 
-def test():
+def test(model):
     """测试的代码"""
     # config 文件
-    conf_file = "configs\\vgg_ft4.yaml"
+    conf_file = f"configs\\{model}.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -136,8 +136,6 @@ def test():
 
 
 if __name__ == "__main__":
-    train(model="vgg_" + "new21")
+    # train(model="vgg_" + "new22")
 
-    train(model="vgg_" + "new22")
-
-    # test()
+    test(model="vgg_" + "new21")
