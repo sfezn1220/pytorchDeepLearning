@@ -136,6 +136,6 @@ def test(model):
 
 
 if __name__ == "__main__":
-    # train(model="vgg_" + "new22")
+    train(model="vgg_" + "new22")
 
-    test(model="vgg_" + "new21")
+    # test(model="vgg_" + "new21")

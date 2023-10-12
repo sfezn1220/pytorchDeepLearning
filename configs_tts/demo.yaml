@@ -1,0 +1,19 @@
+# TTS 训练参数
+
+gpu: 0
+lr: 2e-4
+batch_size: 8
+epochs: 100
+ckpt_path: "F:\\models_tts\\demo"
+
+train_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
+valid_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
+test_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
+input_length: 160000
+
+max_ckpt_save: 5  # 最多同时存储这么多 ckpt 文件
+
+log_every_steps: 10  # 每多少个step展示一次日志
+
+# 数据集的操作
+shuffle: True
