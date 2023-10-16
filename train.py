@@ -8,7 +8,7 @@ import logging
 import torch.nn as nn
 
 from dataset import get_image_dataloader
-from models import VGG16
+from models import VGG16, ResNet152
 from executor import Executor
 
 
@@ -56,7 +56,7 @@ def train(model="vgg_" + "new21"):
     )
 
     # 模型
-    model = VGG16(configs).to(device)
+    model = ResNet152(configs).to(device)
     print(model)
 
     # 损失函数、优化器
@@ -114,7 +114,7 @@ def test(model):
     )
 
     # 模型
-    model = VGG16(configs).to(device)
+    model = ResNet152(configs).to(device)
     print(model)
 
     # 损失函数、优化器
@@ -136,6 +136,8 @@ def test(model):
 
 
 if __name__ == "__main__":
-    train(model="vgg_" + "new22")
+    # train(model="vgg_" + "new23")
+    # test(model="vgg_" + "new23")
 
-    # test(model="vgg_" + "new21")
+    # train(model="resnet152_" + "ft1")
+    test(model="resnet152_" + "base")
