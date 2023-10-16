@@ -15,7 +15,12 @@ from executor import Executor
 def train(model="vgg_" + "new21"):
     """训练的代码"""
     # config 文件
-    conf_file = f"configs\\{model}.yaml"
+    if model.startswith("vgg"):
+        conf_file = f"configs\\vgg\\{model}.yaml"
+    elif model.startswith("resnet"):
+        conf_file = f"configs\\resnet\\{model}.yaml"
+    else:
+        raise ValueError(f"model name ERROR.")
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -56,7 +61,12 @@ def train(model="vgg_" + "new21"):
     )
 
     # 模型
-    model = ResNet152(configs).to(device)
+    if model.startswith("vgg"):
+        model = VGG16(configs).to(device)
+    elif model.startswith("resnet"):
+        model = ResNet152(configs).to(device)
+    else:
+        raise ValueError(f"model name ERROR.")
     print(model)
 
     # 损失函数、优化器
@@ -81,7 +91,12 @@ def train(model="vgg_" + "new21"):
 def test(model):
     """测试的代码"""
     # config 文件
-    conf_file = f"configs\\{model}.yaml"
+    if model.startswith("vgg"):
+        conf_file = f"configs\\vgg\\{model}.yaml"
+    elif model.startswith("resnet"):
+        conf_file = f"configs\\resnet\\{model}.yaml"
+    else:
+        raise ValueError(f"model name ERROR.")
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -114,7 +129,12 @@ def test(model):
     )
 
     # 模型
-    model = ResNet152(configs).to(device)
+    if model.startswith("vgg"):
+        model = VGG16(configs).to(device)
+    elif model.startswith("resnet"):
+        model = ResNet152(configs).to(device)
+    else:
+        raise ValueError(f"model name ERROR.")
     print(model)
 
     # 损失函数、优化器
