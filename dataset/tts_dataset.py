@@ -1,9 +1,11 @@
 """ 定义：语音合成数据集；"""
+import librosa
+import numpy as np
 import tqdm
 import yaml
 import random
 import torch
-import cv2
+import soundfile as sf
 from torch.utils.data import IterableDataset
 from utils import read_json_lists
 from torch.utils.data import DataLoader
@@ -22,8 +24,20 @@ class TTSDataList(IterableDataset):
         super(TTSDataList).__init__()
         self.conf = conf
 
+        self.sample_rate = conf['sample_rate']  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
+        self.hop_size = conf['hop_size']  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
+        self.fft_size = conf['fft_size']
+        self.win_length = conf['win_length']
+        self.window = conf['window']
+        self.num_mels = conf['num_mels']
+
+        self.mel_f_min = conf['mel_f_min']  # Mel谱频率的最小值
+        self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
+
         self.shuffle = conf['shuffle']
-        self.input_length = conf['input_length']  # 默认 10 秒 * 16000 Hz
+        self.input_max_seconds = conf['input_max_seconds']  # padding 到的最大长度/秒，默认是 12秒
+        self.input_max_length = self.input_max_seconds * self.sample_rate // self.hop_size
+
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
 
         self.epoch = -1  # 每个epoch的随机打乱的种子
@@ -51,10 +65,55 @@ class TTSDataList(IterableDataset):
                 data_list.append(data)
         return data_list
 
+    def get_features(self, audio_path):
+        """读取音频、计算Mel谱；"""
+        # get audio
+        audio, rate = sf.read(audio_path)
+        if rate != self.sample_rate:
+            audio = librosa.resample(audio, self.sample_rate)
+        # get spectrogram
+        stft = librosa.stft(
+            audio,
+            n_fft=self.fft_size,
+            hop_length=self.hop_size,
+            win_length=self.win_length,
+            window=self.window,
+        )
+        spec, _ = librosa.magphase(stft)
+        # get mel spec
+        mel_filters = librosa.filters.mel(
+            sr=self.sample_rate,
+            n_fft=self.fft_size,
+            n_mels=self.num_mels,
+            fmin=self.mel_f_min,
+            fmax=self.mel_f_max,
+        )
+        mel = np.log10(
+            np.maximum(
+                np.dot(
+                    mel_filters,
+                    spec,
+                ),
+                1e-10,
+            )
+        ).T
+        mel = torch.tensor(mel, dtype=torch.float32)
+        # get mask
+        mask = torch.ones_like(mel, dtype=torch.float32)
+        # padding
+        if mel.shape[0] < self.input_max_length:
+            zeros_pad = torch.zeros([self.input_max_length - mel.shape[0], 80], dtype=torch.float32)
+            mel = torch.concat([mel, zeros_pad], dim=0)
+            mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32)
+            mask = torch.concat([mask, mask_zeros], dim=0)
+
+        return mel, mask
+
     def __iter__(self):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
+            data['mel'], data['mel_mask'] = self.get_features(data['path'])
             yield data
 
     def __len__(self):
@@ -90,9 +149,11 @@ def get_image_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "..\configs_tts\\demo.yaml"
+    conf_file = "..\\configs\\tts_fs+mg\\demo.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
+
+    # configs['batch_size'] = 1
 
     # 测试 dataloader 的功能
     train_data_loader = get_image_dataloader(
@@ -100,10 +161,11 @@ if __name__ == "__main__":
         data_conf=configs,
     )
 
-    # 测试是 shuffle 功能：
     for epoch in range(5):
         for batch_idx, batch in enumerate(train_data_loader):
             # if batch_idx == 0:
             print(f"batch[{batch_idx}]")
             print(f"spk[{len(batch['spk'])}] = {batch['spk']}")
+            print(f"mel.shape = {batch['mel'].shape}")
+            print(f"mel_mask.shape = {batch['mel_mask'].shape}")
             print()
