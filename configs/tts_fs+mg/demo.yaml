@@ -10,6 +10,9 @@ train_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
 valid_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
 test_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
 
+spk_map: "G:\\Yuanshen\\spk_map.txt"
+phoneme_map: "G:\\Yuanshen\\phoneme_map.txt"
+
 max_ckpt_save: 5  # 最多同时存储这么多 ckpt 文件
 
 log_every_steps: 10  # 每多少个step展示一次日志
@@ -26,4 +29,5 @@ mel_f_min: 0  # Mel谱的频率的最小值
 mel_f_max: 8000  # Mel谱的频率的最大值
 
 shuffle: True
-input_max_seconds: 12  # padding 到的最大长度/秒，默认是 12秒
+input_max_seconds: 12  # 输入音频的最大长度/秒，默认是 12秒
+input_max_tokens: 256  # 输入音素的最大长度/个，默认是 256个字符

@@ -36,8 +36,12 @@ class TTSDataList(IterableDataset):
         self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
 
         self.shuffle = conf['shuffle']
-        self.input_max_seconds = conf['input_max_seconds']  # padding 到的最大长度/秒，默认是 12秒
+        self.input_max_seconds = conf['input_max_seconds']  # 输入音频的最大长度/秒，默认是 12秒
         self.input_max_length = self.input_max_seconds * self.sample_rate // self.hop_size
+
+        self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 256个字符
+
+        self.initial_maps(conf['spk_map'], conf['phoneme_map'])  # 初始化：spk_map、phoneme_amp
 
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
 
@@ -64,10 +68,23 @@ class TTSDataList(IterableDataset):
                     continue
                 data = {}
                 data["spk"] = spk
-                data["pinyin"] = pinyin
+                data["spk_id"] = self.spk_map[spk]
                 data["path"] = path
+                data['pinyin'] = pinyin
                 data_list.append(data)
         return data_list
+
+    def get_phoneme_ids(self, pinyin):
+        """音素转音素ID，并padding到统一长度；"""
+        phoneme_ids = []
+        for p in str(pinyin).split(','):
+            phoneme_ids.append(self.phoneme_map[p])
+        phoneme_ids = torch.tensor(phoneme_ids, dtype=torch.int16)
+        # padding
+        if len(phoneme_ids) < self.input_max_tokens:
+            zeros_pad = torch.zeros([self.input_max_tokens - phoneme_ids.shape[-1]], dtype=torch.int16)
+            phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
+        return phoneme_ids
 
     def get_features(self, audio_path):
         """读取音频、计算Mel谱；"""
@@ -147,11 +164,33 @@ class TTSDataList(IterableDataset):
 
         return mel, f0, energy, audio, mel_mask
 
+    def initial_maps(self, spk_map_file, phoneme_map_file):
+        """初始化： spk_map、phoneme_map；"""
+        self.spk_map = {}
+        with open(spk_map_file, 'r', encoding='utf-8') as r1:
+            for line in r1.readlines():
+                try:
+                    spk, spk_id = line.strip().split(' ')
+                except:
+                    continue
+                self.spk_map[spk] = int(spk_id)
+
+        self.phoneme_map = {}
+        with open(phoneme_map_file, 'r', encoding='utf-8') as r1:
+            for line in r1.readlines():
+                try:
+                    phoneme, phoneme_id = line.strip().split(' ')
+                except:
+                    continue
+                self.phoneme_map[phoneme] = int(phoneme_id)
+        return
+
     def __iter__(self):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
             data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'] = self.get_features(data['path'])
+            data['phoneme_ids'] = self.get_phoneme_ids(data['pinyin'])
             yield data
 
     def __len__(self):
@@ -191,19 +230,28 @@ if __name__ == "__main__":
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
-    # configs['batch_size'] = 1
+    configs['batch_size'] = 16
 
     # 测试 dataloader 的功能
     train_data_loader = get_tts_dataloader(data_path=configs["train_data"], data_conf=configs)
+
+    # 统计音素的最大长度
+    max_phoneme_ids_length = 0
 
     for epoch in range(1):
         for batch_idx, batch in enumerate(train_data_loader):
             # if batch_idx == 0:
             print(f"batch[{batch_idx}]")
             print(f"spk[{len(batch['spk'])}] = {batch['spk']}")
+            print(f"spk_id[{len(batch['spk_id'])}] = {batch['spk_id']}")
+            print(f"phoneme_ids.shape = {batch['phoneme_ids'].shape}")
             print(f"mel.shape = {batch['mel'].shape}")
             print(f"f0.shape = {batch['f0'].shape}")
             print(f"energy.shape = {batch['energy'].shape}")
             print(f"audio.shape = {batch['audio'].shape}")
             print(f"mel_mask.shape = {batch['mel_mask'].shape}")
             print()
+
+            max_phoneme_ids_length = max(max_phoneme_ids_length, batch['phoneme_ids'].shape[1])
+
+    print(f"max_phoneme_ids_length = {max_phoneme_ids_length}")
