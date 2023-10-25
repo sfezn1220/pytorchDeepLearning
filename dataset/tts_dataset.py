@@ -6,6 +6,7 @@ import yaml
 import random
 import torch
 import soundfile as sf
+import pyworld as pw
 from torch.utils.data import IterableDataset
 from utils import read_json_lists
 from torch.utils.data import DataLoader
@@ -58,6 +59,9 @@ class TTSDataList(IterableDataset):
                     spk, duration, text, pinyin, path = line.split(' ', 4)
                 except:
                     continue
+                if float(duration) >= self.input_max_seconds:
+                    print(f"skip audio with duration {duration}")
+                    continue
                 data = {}
                 data["spk"] = spk
                 data["pinyin"] = pinyin
@@ -99,28 +103,62 @@ class TTSDataList(IterableDataset):
         ).T
         mel = torch.tensor(mel, dtype=torch.float32)
         # get mask
-        mask = torch.ones_like(mel, dtype=torch.float32)
+        mel_mask = torch.ones_like(mel, dtype=torch.float32)
         # padding
         if mel.shape[0] < self.input_max_length:
             zeros_pad = torch.zeros([self.input_max_length - mel.shape[0], 80], dtype=torch.float32)
             mel = torch.concat([mel, zeros_pad], dim=0)
             mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32)
-            mask = torch.concat([mask, mask_zeros], dim=0)
+            mel_mask = torch.concat([mel_mask, mask_zeros], dim=0)
 
-        return mel, mask
+        audio = np.array(audio, dtype=np.double)
+
+        # get F0
+        f0, t = pw.dio(
+            x=audio,
+            fs=self.sample_rate,
+            f0_ceil=self.mel_f_max,
+            frame_period=1000 * self.hop_size / self.sample_rate,
+        )
+        f0 = pw.stonemask(x=audio, f0=f0, temporal_positions=t, fs=self.sample_rate)
+        f0 = torch.tensor(f0, dtype=torch.float32)
+        # padding
+        if len(f0) < self.input_max_length:
+            zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32)
+            f0 = torch.concat([f0, zeros_pad], dim=0)
+            f0 *= mel_mask[:, 0]
+
+        # get energy
+        energy = np.sqrt(np.sum(spec ** 2, axis=0))
+        energy = torch.tensor(energy, dtype=torch.float32)
+        # padding
+        if len(energy) < self.input_max_length:
+            zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32)
+            energy = torch.concat([energy, zeros_pad], dim=0)
+            energy *= mel_mask[:, 0]
+
+        # padding audio
+        audio = torch.tensor(audio, dtype=torch.float32)
+        if len(audio) < self.input_max_length * self.hop_size:
+            zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32)
+            audio = torch.concat([audio, zeros_pad], dim=0)
+
+        assert len(energy) == len(f0) == mel.shape[0] == len(audio) // self.hop_size
+
+        return mel, f0, energy, audio, mel_mask
 
     def __iter__(self):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
-            data['mel'], data['mel_mask'] = self.get_features(data['path'])
+            data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'] = self.get_features(data['path'])
             yield data
 
     def __len__(self):
         return len(self.data_list)
 
 
-def get_image_dataloader(
+def get_tts_dataloader(
         data_path: str,
         data_conf: dict,
         num_workers: int = 0,
@@ -156,16 +194,16 @@ if __name__ == "__main__":
     # configs['batch_size'] = 1
 
     # 测试 dataloader 的功能
-    train_data_loader = get_image_dataloader(
-        data_path=configs["train_data"],
-        data_conf=configs,
-    )
+    train_data_loader = get_tts_dataloader(data_path=configs["train_data"], data_conf=configs)
 
-    for epoch in range(5):
+    for epoch in range(1):
         for batch_idx, batch in enumerate(train_data_loader):
             # if batch_idx == 0:
             print(f"batch[{batch_idx}]")
             print(f"spk[{len(batch['spk'])}] = {batch['spk']}")
             print(f"mel.shape = {batch['mel'].shape}")
+            print(f"f0.shape = {batch['f0'].shape}")
+            print(f"energy.shape = {batch['energy'].shape}")
+            print(f"audio.shape = {batch['audio'].shape}")
             print(f"mel_mask.shape = {batch['mel_mask'].shape}")
             print()
