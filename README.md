@@ -11,7 +11,7 @@
 sample:
 
 <audio id="audio" controls="" preload="none">
-      <source id="wav" src="wavs_sample.Babala-0000_hxj4a3e2aw2oundfm7ddctfs8nqzake_000077.wav">
+      <source id="wav" src="wavs_sample/Babala-0000_hxj4a3e2aw2oundfm7ddctfs8nqzake_000077.wav">
 </audio>
 
 ---
