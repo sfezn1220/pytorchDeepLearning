@@ -38,6 +38,7 @@ conda install Pillow
 pip install pyloudnorm jieba pyyaml sox
 pip install pypinyin
 pip install imageio
+pip install textgrid
 ```
 
 ---
@@ -74,5 +75,6 @@ conda activate mfa
 ```
 
 ```shell
-mfa train  "G:\Yuanshen\3.loudnorm_16K_version-2.0-copy-for-mfa"  "G:\Yuanshen\lexicon.txt"  "G:\Yuanshen\acoustic_model.zip"  --output_directory "G:\Yuanshen\3.loudnorm_16K_version-2.0-copy-for-mfa_output"  --num_jobs 4  --clean
+# mfa train  "G:\Yuanshen\3.loudnorm_16K_version-2.0-copy-for-mfa"  "G:\Yuanshen\lexicon.txt"  "G:\Yuanshen\acoustic_model.zip"  --output_directory "G:\Yuanshen\3.loudnorm_16K_version-2.0-copy-for-mfa_output"  --num_jobs 4  --clean
+mfa train  "G:\Yuanshen\3.loudnorm_16K_version-2.0"  "G:\Yuanshen\lexicon.txt"  "G:\Yuanshen\3.loudnorm_16K_version-2.0-mfa_output\acoustic_model.zip"  --output_directory "G:\Yuanshen\3.loudnorm_16K_version-2.0-mfa_output"  --num_jobs 4  --clean
 ```
