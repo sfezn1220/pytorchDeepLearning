@@ -8,6 +8,12 @@
 
 ## 2、搭建一版语音合成模型 TODO
 
+sample:
+
+<audio id="audio" controls="" preload="none">
+      <source id="wav" src="wavs_sample.Babala-0000_hxj4a3e2aw2oundfm7ddctfs8nqzake_000077.wav">
+</audio>
+
 ---
 
 ## 训练环境安装
