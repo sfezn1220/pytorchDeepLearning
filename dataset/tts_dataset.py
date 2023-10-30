@@ -1,4 +1,6 @@
 """ 定义：语音合成数据集；"""
+import os.path
+
 import librosa
 import numpy as np
 import tqdm
@@ -13,6 +15,8 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 
+from utils import read_all_textgrid
+
 
 class TTSDataList(IterableDataset):
     def __init__(self, data_list_file: str, conf: dict = {}):
@@ -23,7 +27,6 @@ class TTSDataList(IterableDataset):
         :return:
         """
         super(TTSDataList).__init__()
-        self.conf = conf
 
         self.sample_rate = conf['sample_rate']  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
         self.hop_size = conf['hop_size']  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
@@ -42,8 +45,10 @@ class TTSDataList(IterableDataset):
         self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 256个字符
 
         self.initial_maps(conf['spk_map'], conf['phoneme_map'])  # 初始化：spk_map、phoneme_amp
+        self.mfa_dir = conf['mfa_dir']  # MFA对齐结果
 
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
+        self.get_mfa_results()  # 读取duration信息
 
         self.epoch = -1  # 每个epoch的随机打乱的种子
 
@@ -70,9 +75,22 @@ class TTSDataList(IterableDataset):
                 data["spk"] = spk
                 data["spk_id"] = self.spk_map[spk]
                 data["path"] = path
+                data["uttid"] = os.path.basename(path).replace(".wav", "")
                 data['pinyin'] = pinyin
                 data_list.append(data)
         return data_list
+
+    def get_mfa_results(self):
+        """从MFA对齐结果中，读取duration信息；"""
+        # 读取MFA对齐结果中的所有的textgrid文件
+        all_dur_list = read_all_textgrid(self.mfa_dir)
+
+        new_data_list = []
+        for data in self.data_list:
+            uttid = data['uttid']
+            dur_list = all_dur_list[uttid]  # TODO 找出每个uttid对应的textgrid，将“秒”转化成“帧”，然后过滤掉：长度不一致的、音素不完全一致的
+
+        return
 
     def get_phoneme_ids(self, pinyin):
         """音素转音素ID，并padding到统一长度；"""

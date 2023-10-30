@@ -4,7 +4,14 @@ import os
 import textgrid
 
 
-def read_one_textgrid(textgrid_file="", phoneme_list=[]) -> list[float]:
+# 这些是韵律标签
+punctuation_token_list = [
+    "#0", "#1", "#2", "#3", "<sos>", "<eos>",
+    "p0", "p1", "p2", "p3", "sos", "eos",
+]
+
+
+def read_one_textgrid(textgrid_file="", phoneme_list=[]) -> list[list[str, float]]:
     """
     读取一条 textgrid 文件，并与音素序列进行对齐；
     :param textgrid_file: textgrid 文件的绝对路径；
@@ -13,22 +20,68 @@ def read_one_textgrid(textgrid_file="", phoneme_list=[]) -> list[float]:
     """
 
     # 初始化：每个音素的时长，秒：
-    dur_list = [0.0 for _ in range(len(phoneme_list))]
+    dur_list = []
 
-    # 使用 textgrid 脚本读取对齐结果
+    # 使用 textgrid 工具，读取对齐结果
     assert os.path.exists(textgrid_file) is True
     textGrid = textgrid.TextGrid()
     textGrid.read(textgrid_file)
 
     interval_phonemes = textGrid.tiers[1]
 
+    # 提取出音素，及对应的时长，秒
+    blank_phoneme_cnt = 0
     for i, interval in enumerate(interval_phonemes):
         phoneme = interval.mark
-        start_time = interval.minTime
-        end_time = interval.maxTime
-        print(f"{phoneme}, {end_time - start_time}")
+        start_time = float(interval.minTime)
+        end_time = float(interval.maxTime)
+        dur_list.append([phoneme, abs(start_time - end_time)])
+
+        if len(phoneme) < 1:
+            blank_phoneme_cnt += 1  # 统计：有多少个MFA对齐出的空字符
+
+    # 删除掉所有的MFA对齐的空字符
+    for _ in range(blank_phoneme_cnt):
+        for i, [p, dur] in enumerate(dur_list):
+            if len(p) < 1:  # 如果是空字符
+                if i-1 >= 0 and dur_list[i-1][0] in punctuation_token_list:
+                    dur_list[i-1][-1] += dur_list[i][-1]
+                    dur_list.pop(i)
+                    break
+                elif i+1 <= len(dur_list)-1 and dur_list[i+1][0] in punctuation_token_list:
+                    dur_list[i+1][-1] += dur_list[i][-1]
+                    dur_list.pop(i)
+                    break
+
+    # 验证：音素长度是否一致，如果给定音素的话：
+    if len(phoneme_list) > 1:
+        assert len(dur_list) == len(phoneme_list)
+
+        p_mfa = [p for [p, dur] in dur_list]
+        assert p_mfa == phoneme_list
 
     return dur_list
+
+
+def read_all_textgrid(textgred_dir="") -> dict:
+    """读取这个文件夹内的所有textgrid文件；返回字典：key=uttid, value=[[phoneme1, dur1], ...]；"""
+
+    uttid2textgrid = {}
+
+    for spk in os.listdir(textgred_dir):
+        for file in os.listdir(os.path.join(textgred_dir, spk)):
+            if not file.endswith(".TextGrid"):  # 只读取textgrid文件
+                continue
+            uttid = file.replace(".TextGrid", "")
+            full_path = os.path.join(textgred_dir, spk, file)
+            dur_list = read_one_textgrid(full_path)
+
+            if uttid not in uttid2textgrid:
+                uttid2textgrid[uttid] = dur_list
+            else:
+                print(f"重复的 uttid: {uttid}")
+
+    return uttid2textgrid
 
 
 if __name__ == "__main__":
