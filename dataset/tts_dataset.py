@@ -78,6 +78,7 @@ class TTSDataList(IterableDataset):
                 data["uttid"] = os.path.basename(path).replace(".wav", "")
                 data['pinyin'] = pinyin
                 data_list.append(data)
+        print(f"读取到语音数据：{len(data_list)}条。")
         return data_list
 
     def get_mfa_results(self):
@@ -88,8 +89,30 @@ class TTSDataList(IterableDataset):
         new_data_list = []
         for data in self.data_list:
             uttid = data['uttid']
-            dur_list = all_dur_list[uttid]  # TODO 找出每个uttid对应的textgrid，将“秒”转化成“帧”，然后过滤掉：长度不一致的、音素不完全一致的
+            phonemes = str(data['pinyin']).split(",")
+            if uttid not in all_dur_list:
+                print(f"跳过MFA失败的语音：{uttid}")
+                continue
+            phoneme_list, dur_list = all_dur_list[uttid]
+            if len(dur_list) != len(phonemes):
+                print(f"跳过MFA后长度不一致的数据：{uttid}, dur_list[{len(dur_list)}] vs phonemes[{len(phonemes)}]")
+                continue
+            if phoneme_list != phonemes:
+                print(f"跳过MFA后音素不一致的数据：{uttid}")
+                continue
+            duration_frames = [round(float(d) * self.sample_rate / self.hop_size) for d in dur_list]
+            # duration_frames = [float(d) for d in dur_list]
+            duration_frames = torch.tensor(duration_frames, dtype=torch.float32)
+            # padding
+            if len(duration_frames) < self.input_max_tokens:
+                zeros_pad = torch.zeros([self.input_max_tokens - duration_frames.shape[-1]], dtype=torch.float32)
+                duration_frames = torch.concat([duration_frames, zeros_pad], dim=0)
 
+            data['duration'] = duration_frames
+            new_data_list.append(data)
+
+        self.data_list = new_data_list
+        print(f"经过MFA对齐后，语音数据还有：{len(new_data_list)}条。")
         return
 
     def get_phoneme_ids(self, pinyin):
@@ -137,6 +160,7 @@ class TTSDataList(IterableDataset):
             )
         ).T
         mel = torch.tensor(mel, dtype=torch.float32)
+        mel_length = mel.shape[0]  # MEL谱长度
         # get mask
         mel_mask = torch.ones_like(mel, dtype=torch.float32)
         # padding
@@ -174,13 +198,14 @@ class TTSDataList(IterableDataset):
 
         # padding audio
         audio = torch.tensor(audio, dtype=torch.float32)
+        seconds = len(audio) / self.sample_rate  # 语音时长，秒
         if len(audio) < self.input_max_length * self.hop_size:
             zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32)
             audio = torch.concat([audio, zeros_pad], dim=0)
 
         assert len(energy) == len(f0) == mel.shape[0] == len(audio) // self.hop_size
 
-        return mel, f0, energy, audio, mel_mask
+        return mel, f0, energy, audio, mel_mask, seconds, mel_length
 
     def initial_maps(self, spk_map_file, phoneme_map_file):
         """初始化： spk_map、phoneme_map；"""
@@ -207,7 +232,7 @@ class TTSDataList(IterableDataset):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
-            data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'] = self.get_features(data['path'])
+            data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'], data['mel_length'] = self.get_features(data['path'])
             data['phoneme_ids'] = self.get_phoneme_ids(data['pinyin'])
             yield data
 
@@ -262,12 +287,16 @@ if __name__ == "__main__":
             print(f"batch[{batch_idx}]")
             print(f"spk[{len(batch['spk'])}] = {batch['spk']}")
             print(f"spk_id[{len(batch['spk_id'])}] = {batch['spk_id']}")
+            print(f"uttid[{len(batch['uttid'])}] = {batch['uttid']}")
             print(f"phoneme_ids.shape = {batch['phoneme_ids'].shape}")
             print(f"mel.shape = {batch['mel'].shape}")
             print(f"f0.shape = {batch['f0'].shape}")
             print(f"energy.shape = {batch['energy'].shape}")
             print(f"audio.shape = {batch['audio'].shape}")
             print(f"mel_mask.shape = {batch['mel_mask'].shape}")
+            print(f"duration.shape = {batch['duration'].shape}, sum={torch.sum(batch['duration'], dim=-1)}")
+            print(f"seconds = {batch['seconds']}")
+            print(f"mel_length = {batch['mel_length']}")
             print()
 
             max_phoneme_ids_length = max(max_phoneme_ids_length, batch['phoneme_ids'].shape[1])

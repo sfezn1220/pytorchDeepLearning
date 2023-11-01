@@ -64,20 +64,26 @@ def read_one_textgrid(textgrid_file="", phoneme_list=[]) -> list[list[str, float
 
 
 def read_all_textgrid(textgred_dir="") -> dict:
-    """读取这个文件夹内的所有textgrid文件；返回字典：key=uttid, value=[[phoneme1, dur1], ...]；"""
+    """读取这个文件夹内的所有textgrid文件；返回字典：key=uttid, value=[[phoneme1, phoneme2, ...], [dur1, dur2, ...]]；"""
 
     uttid2textgrid = {}
 
     for spk in os.listdir(textgred_dir):
+        if not os.path.isdir(os.path.join(textgred_dir, spk)):
+            continue
         for file in os.listdir(os.path.join(textgred_dir, spk)):
             if not file.endswith(".TextGrid"):  # 只读取textgrid文件
                 continue
             uttid = file.replace(".TextGrid", "")
             full_path = os.path.join(textgred_dir, spk, file)
-            dur_list = read_one_textgrid(full_path)
+
+            phoneme_dur_list = read_one_textgrid(full_path)  # 读取一条textgrid文件，删除空字符
+
+            phoneme_list = [p for p, d in phoneme_dur_list]
+            dur_list = [d for p, d in phoneme_dur_list]
 
             if uttid not in uttid2textgrid:
-                uttid2textgrid[uttid] = dur_list
+                uttid2textgrid[uttid] = [phoneme_list, dur_list]
             else:
                 print(f"重复的 uttid: {uttid}")
 

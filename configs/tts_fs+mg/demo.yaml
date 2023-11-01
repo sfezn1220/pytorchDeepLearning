@@ -13,7 +13,7 @@ test_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
 spk_map: "G:\\Yuanshen\\spk_map.txt"
 phoneme_map: "G:\\Yuanshen\\phoneme_map.txt"
 
-mfa_dir: "G:\Yuanshen\3.loudnorm_16K_version-2.0-mfa_output"
+mfa_dir: "G:\\Yuanshen\\3.loudnorm_16K_version-2.0-mfa_output"
 
 max_ckpt_save: 5  # 最多同时存储这么多 ckpt 文件
 
