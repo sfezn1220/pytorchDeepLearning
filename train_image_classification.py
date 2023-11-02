@@ -9,7 +9,7 @@ import torch.nn as nn
 
 from dataset import get_image_dataloader
 from models import VGG16, ResNet152
-from executor import Executor
+from executor import ImageClassficationExecutor as Executor
 
 
 def train(model="vgg_" + "new21"):
