@@ -177,7 +177,7 @@ def get_image_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "../configs/vgg/vgg_ft1.yaml"
+    conf_file = "../configs/resnet/resnet152_ft1.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 

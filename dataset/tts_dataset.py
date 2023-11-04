@@ -120,10 +120,10 @@ class TTSDataList(IterableDataset):
         phoneme_ids = []
         for p in str(pinyin).split(','):
             phoneme_ids.append(self.phoneme_map[p])
-        phoneme_ids = torch.tensor(phoneme_ids, dtype=torch.int16)
+        phoneme_ids = torch.tensor(phoneme_ids, dtype=torch.int32)
         # padding
         if len(phoneme_ids) < self.input_max_tokens:
-            zeros_pad = torch.zeros([self.input_max_tokens - phoneme_ids.shape[-1]], dtype=torch.int16)
+            zeros_pad = torch.zeros([self.input_max_tokens - phoneme_ids.shape[-1]], dtype=torch.int32)
             phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
         return phoneme_ids
 

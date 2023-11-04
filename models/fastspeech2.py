@@ -9,30 +9,54 @@ class ConformerBlock(nn.Module):
     def __init__(self, conf: dict):
         super().__init__()
 
-        self.start_feed_forward = FeedForwardModule(conf)
+        self.start_feed_forward = FeedForwardModule()
 
     def forward(self, x, mask):
+
+        x = self.start_feed_forward(x)
+
+        x *= mask
 
         return x
 
 
 class FeedForwardModule(nn.Module):
     """ Conformer 模型的 feed-forward 模块，包含残差结构；"""
-    def __init__(self, conf: dict):
+    def __init__(self, in_channel=256, out_channel=256, mid_channel=1024, kernel_size=3, dropout_rate=0.2):
         super().__init__()
 
-        self.cond_1 = nn.Conv1d()  # TODO 定义 macaron feed-forward 模块
+        # self.layer_norm =
 
-    def forward(self, x):
+        self.conv1d_1 = nn.Conv1d(
+            in_channels=in_channel,
+            out_channels=mid_channel,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+        )
+        self.conv1d_2 = nn.Conv1d(
+            in_channels=mid_channel,
+            out_channels=out_channel,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+        )
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x):  # TODO 添加残差结构
         """
         :param x: [batch, time, in_channel]
         :return: [batch, time, out_channel]
         """
+        residual = nn.Identity(x)
+        x = self.dropout(self.act(self.conv1d_1(x)))
+        x = self.conv1d_2(x)
         return x
 
 
 class ConformerEncoder(nn.Module):
-    """TTS transformer Encoder."""
+    """TTS conformer Encoder，包含多层 conformer 结构；"""
     def __init__(self, conf: dict):
         super().__init__()
 
@@ -51,19 +75,17 @@ class ConformerEncoder(nn.Module):
 
     def forward(self, x: torch.tensor, mask: torch.tensor):
         """
-        :param x: [batch, time] or [batch, time, 1]
+        :param x: [batch, in_channel, time]
         :param mask: 与 x 尺寸一致
-        :return: [batch, time, out_channel]
+        :return: [batch, out_channel, time]
         """
         # 检查尺寸
-        assert len(x.shape) == len(mask.shape)
-        if len(x.shape) < 3:
-            x = torch.unsqueeze(x, 2)  # [batch, time] -> [batch, time, 1]
-            mask = torch.unsqueeze(mask, 1)  # [batch, time] > [batch, 1, time]
+        assert len(x.shape) == len(mask.shape) == 3, \
+            f"输入音素序列的尺寸应该是三维 [batch, in_channel, time]，而 len(inputs.shape) = {len(x.shape)}"
 
         for block in self.blocks:
             x = block(x, mask)
-            print(f"{x.shape}")
+            print(f"x.shape = {x.shape}, mask.shape = {mask.shape}")
 
         return x
 
@@ -73,6 +95,9 @@ class FastSpeech2(nn.Module):
     def __init__(self, conf: dict):
         super().__init__()
 
+        self.conf = conf
+
+        self.phoneme_embedding = self.get_phoneme_embedding()
         self.encoder = ConformerEncoder(conf)
 
     def forward(self, phoneme_ids, spk_id, duration):
@@ -83,11 +108,12 @@ class FastSpeech2(nn.Module):
         :return:
         """
 
-        phoneme_mask = self.get_phoneme_mask(phoneme_ids)
+        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)
+        phoneme_embedded = self.phoneme_embedding(phoneme_ids).transpose(1, 2)  # [batch, channel, time], channel first
 
-        encoder_outputs = self.encoder(phoneme_ids, phoneme_mask)
+        encoder_outputs = self.encoder(phoneme_embedded, phoneme_mask)
 
-        return phoneme_mask
+        return encoder_outputs
 
     @staticmethod
     def get_phoneme_mask(phoneme_ids):
@@ -97,4 +123,14 @@ class FastSpeech2(nn.Module):
         :return: [batch, time] 与输入的尺寸相同，当音素=0时取0，当音素!=0时取1；
         """
         mask = torch.not_equal(phoneme_ids, 0)
-        return mask.int()
+        return mask.unsqueeze(-1).int()
+
+    def get_phoneme_embedding(self):
+        """ 对音素序列进行 embedding，在 encoder 之前；"""
+        num_embeddings = self.conf.get('phonemes_size', 213)  # 音素的数量
+        embedding_dim = 256  # 默认取256，和后面encoder、decoder的channel一致
+        return nn.Embedding(
+            num_embeddings=num_embeddings,
+            embedding_dim=embedding_dim,
+            padding_idx=0,  # 音素“0”表示pad
+        )
