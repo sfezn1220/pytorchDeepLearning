@@ -10,6 +10,7 @@ class ConformerBlock(nn.Module):
         super().__init__()
 
         self.start_feed_forward = FeedForwardModule()
+        self.convolution_module = ConvolutionModule()
 
     def forward(self, x, mask):
 
@@ -20,13 +21,39 @@ class ConformerBlock(nn.Module):
         return x
 
 
+class ConvolutionModule(nn.Module):
+    """ Conformer 摸瞎的 卷积模块；包含残差结构；"""
+    def __init__(self, in_channel=256, out_channel=256):
+        super().__init__()
+
+        self.layer_norm = nn.LayerNorm(in_channel)
+        self.point_wise_conv1d = nn.Conv1d(
+            in_channels=in_channel,
+            out_channels=in_channel * 2,
+            kernel_size=1,
+            stride=1,
+        )
+        self.act_1 = nn.GLU()
+        self.deep_wise_conv1d = # TODO 继续搭建 conformer Conv Module
+
+    def forward(self, x):
+        """
+        :param x: [batch, time, in_channel]
+        :return: [batch, time, out_channel]
+        """
+        residual = nn.Identity()(x)
+        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        x = x  # TODO
+        x = residual + 0.5 * x
+        return x
+
+
 class FeedForwardModule(nn.Module):
     """ Conformer 模型的 feed-forward 模块，包含残差结构；"""
     def __init__(self, in_channel=256, out_channel=256, mid_channel=1024, kernel_size=3, dropout_rate=0.2):
         super().__init__()
 
-        # self.layer_norm =
-
+        self.layer_norm = nn.LayerNorm(in_channel)
         self.conv1d_1 = nn.Conv1d(
             in_channels=in_channel,
             out_channels=mid_channel,
@@ -44,14 +71,15 @@ class FeedForwardModule(nn.Module):
         self.act = nn.ReLU()
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, x):  # TODO 添加残差结构
+    def forward(self, x):
         """
         :param x: [batch, time, in_channel]
         :return: [batch, time, out_channel]
         """
-        residual = nn.Identity(x)
-        x = self.dropout(self.act(self.conv1d_1(x)))
-        x = self.conv1d_2(x)
+        residual = nn.Identity()(x)
+        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        x = self.dropout(self.conv1d_2(self.dropout(self.act(self.conv1d_1(x)))))
+        x = residual + 0.5 * x
         return x
 
 
