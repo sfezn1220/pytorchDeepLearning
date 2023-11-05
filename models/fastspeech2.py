@@ -10,12 +10,14 @@ class ConformerBlock(nn.Module):
         super().__init__()
 
         self.start_feed_forward = FeedForwardModule()
+        self.multi_head_self_attention = MultiHeadSelfAttention()
         self.convolution_module = ConvolutionModule()
         self.end_feed_forward = FeedForwardModule()
 
     def forward(self, x, mask):
 
         x = self.start_feed_forward(x)
+        x = self.multi_head_self_attention(x, mask)
         x = self.convolution_module(x)
         x = self.end_feed_forward(x)
 
@@ -24,8 +26,55 @@ class ConformerBlock(nn.Module):
         return x
 
 
+class MultiHeadSelfAttention(nn.Module):
+    """" Conformer 模型的 自注意力模块；包含残差结构； """
+    def __init__(self, in_out_channel=256, head_nums=2, dropout_rate=0.2):
+        super().__init__()
+
+        self.layer_norm = nn.LayerNorm(in_out_channel)
+
+        self.head_nums = head_nums
+        self.channel = in_out_channel
+        self.linear_q = nn.Linear(in_features=in_out_channel, out_features=in_out_channel)
+        self.linear_k = nn.Linear(in_features=in_out_channel, out_features=in_out_channel)
+        self.linear_v = nn.Linear(in_features=in_out_channel, out_features=in_out_channel)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def calculate_qkv(self, x):
+        """ [batch, channels, time] -> [batch, head_nums * head_size, time] -> [batch, head_nums, time, head_size] """
+        batch_size = x.shape[0]
+        time = x.shape[2]
+
+        queue = self.linear_q(x.transpose(1, 2)).transpose(1, 2)  # nn.Linear 要求 channel last
+        key = self.linear_k(x.transpose(1, 2)).transpose(1, 2)
+        value = self.linear_v(x.transpose(1, 2)).transpose(1, 2)
+
+        queue = queue.view([batch_size, self.head_nums, x, -1])
+        key = key.view([batch_size, self.head_nums, x, -1])
+        value = value.view([batch_size, self.head_nums, x, -1])
+
+        return queue, key, value
+
+    def forward(self, x, mask):
+        """
+        :param x: [batch, in_out_channel, time]
+        :return: [batch, in_out_channel, time]
+        """
+        residual = nn.Identity()(x)
+        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        # self-attention
+        queue, key, value = self.calculate_qkv(x)
+        position_embedding = self.calculate_postion_embdding(x)  # TODO: 生成相对位置编码的emb，并进行卷积
+        attention_score = self.calculate_maxtrix(x)  # TODO: 计算相对位置编码所需的 matrix
+        x = self.calculate_masked_attention_score(x)  # TODO: 计算attention score
+
+        x = self.dropout(x)
+        x += residual
+        return x
+
+
 class ConvolutionModule(nn.Module):
-    """ Conformer 摸瞎的 卷积模块；包含残差结构；"""
+    """ Conformer 模型的 卷积模块；包含残差结构；"""
     def __init__(self, in_out_channel=256, deep_wise_conv_kernel_size=7, dropout_rate=0.2):
         super().__init__()
 
@@ -57,8 +106,8 @@ class ConvolutionModule(nn.Module):
 
     def forward(self, x):
         """
-        :param x: [batch, time, in_out_channel]
-        :return: [batch, time, in_out_channel]
+        :param x: [batch, in_out_channel, time]
+        :return: [batch, in_out_channel, time]
         """
         residual = nn.Identity()(x)
         x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
@@ -97,8 +146,8 @@ class FeedForwardModule(nn.Module):
 
     def forward(self, x):
         """
-        :param x: [batch, time, in_out_channel]
-        :return: [batch, time, in_out_channel]
+        :param x: [batch, in_out_channel, time]
+        :return: [batch, in_out_channel, time]
         """
         residual = nn.Identity()(x)
         x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
@@ -138,8 +187,8 @@ class ConformerEncoder(nn.Module):
 
         for block in self.blocks:
             x = block(x, mask)
-            print(f"x.shape = {x.shape}, mask.shape = {mask.shape}")
 
+        print(f"x.shape = {x.shape}, mask.shape = {mask.shape}")
         return x
 
 
