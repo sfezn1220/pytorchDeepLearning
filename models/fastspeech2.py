@@ -11,10 +11,13 @@ class ConformerBlock(nn.Module):
 
         self.start_feed_forward = FeedForwardModule()
         self.convolution_module = ConvolutionModule()
+        self.end_feed_forward = FeedForwardModule()
 
     def forward(self, x, mask):
 
         x = self.start_feed_forward(x)
+        x = self.convolution_module(x)
+        x = self.end_feed_forward(x)
 
         x *= mask
 
@@ -23,39 +26,60 @@ class ConformerBlock(nn.Module):
 
 class ConvolutionModule(nn.Module):
     """ Conformer 摸瞎的 卷积模块；包含残差结构；"""
-    def __init__(self, in_channel=256, out_channel=256):
+    def __init__(self, in_out_channel=256, deep_wise_conv_kernel_size=7, dropout_rate=0.2):
         super().__init__()
 
-        self.layer_norm = nn.LayerNorm(in_channel)
-        self.point_wise_conv1d = nn.Conv1d(
-            in_channels=in_channel,
-            out_channels=in_channel * 2,
+        self.layer_norm = nn.LayerNorm(in_out_channel)
+        self.point_wise_conv1d_1 = nn.Conv1d(
+            in_channels=in_out_channel,
+            out_channels=in_out_channel * 2,
             kernel_size=1,
             stride=1,
         )
-        self.act_1 = nn.GLU()
-        self.deep_wise_conv1d = # TODO 继续搭建 conformer Conv Module
+        self.glu = nn.GLU(dim=1)  # 门控激活函数
+        self.deep_wise_conv1d = nn.Conv1d(
+            in_channels=in_out_channel,
+            out_channels=in_out_channel,
+            kernel_size=deep_wise_conv_kernel_size,
+            stride=1,
+            padding=deep_wise_conv_kernel_size // 2,
+            groups=1,
+        )
+        self.batch_norm = nn.BatchNorm1d(in_out_channel)
+        self.swish = nn.SiLU()  # swish 激活函数
+        self.point_wise_conv1d_2 = nn.Conv1d(
+            in_channels=in_out_channel,
+            out_channels=in_out_channel,
+            kernel_size=1,
+            stride=1,
+        )
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         """
-        :param x: [batch, time, in_channel]
-        :return: [batch, time, out_channel]
+        :param x: [batch, time, in_out_channel]
+        :return: [batch, time, in_out_channel]
         """
         residual = nn.Identity()(x)
         x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
-        x = x  # TODO
-        x = residual + 0.5 * x
+        # point-wise-conv1d + GLU + deep-wise-conv1d + BN + swish + point-wise-conv1d + dropout
+        x = self.point_wise_conv1d_1(x)
+        x = self.glu(x)
+        x = self.deep_wise_conv1d(x)
+        x = self.point_wise_conv1d_2(self.swish(self.batch_norm(x)))
+        x = self.dropout(x)
+        x += residual
         return x
 
 
 class FeedForwardModule(nn.Module):
     """ Conformer 模型的 feed-forward 模块，包含残差结构；"""
-    def __init__(self, in_channel=256, out_channel=256, mid_channel=1024, kernel_size=3, dropout_rate=0.2):
+    def __init__(self, in_out_channel=256, mid_channel=1024, kernel_size=3, dropout_rate=0.2):
         super().__init__()
 
-        self.layer_norm = nn.LayerNorm(in_channel)
+        self.layer_norm = nn.LayerNorm(in_out_channel)
         self.conv1d_1 = nn.Conv1d(
-            in_channels=in_channel,
+            in_channels=in_out_channel,
             out_channels=mid_channel,
             kernel_size=kernel_size,
             stride=1,
@@ -63,22 +87,23 @@ class FeedForwardModule(nn.Module):
         )
         self.conv1d_2 = nn.Conv1d(
             in_channels=mid_channel,
-            out_channels=out_channel,
+            out_channels=in_out_channel,
             kernel_size=kernel_size,
             stride=1,
             padding=kernel_size // 2,
         )
-        self.act = nn.ReLU()
+        self.relu = nn.ReLU()  # 按照PaddleSpeech、ESPnet，这里是ReLU，而按照conformer论文，这里是swish；
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         """
-        :param x: [batch, time, in_channel]
-        :return: [batch, time, out_channel]
+        :param x: [batch, time, in_out_channel]
+        :return: [batch, time, in_out_channel]
         """
         residual = nn.Identity()(x)
         x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
-        x = self.dropout(self.conv1d_2(self.dropout(self.act(self.conv1d_1(x)))))
+        # 3*3-conv1d-增加channel + relu + dropout + 3*3-conv1d-减小channel + dropout
+        x = self.dropout(self.conv1d_2(self.dropout(self.relu(self.conv1d_1(x)))))
         x = residual + 0.5 * x
         return x
 
