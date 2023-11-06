@@ -143,12 +143,12 @@ class MultiHeadSelfAttention(nn.Module):
     def calculate_masked_attention_score(self, attention_score, mask, value):
         """
         对输入的 attention_score 进行 mask；
-        :param attention_score: [batch, channel, time, time]
+        :param attention_score: [batch, head_nums, time, time]
         :param mask: [batch, 1, time]
-        :param value: [batch, channel, time, time]
+        :param value: [batch, head_nums, time, head_size]
         :return: [batch, channel, time]
         """
-        batch, channel, time, _ = attention_score.shape
+        batch, _, time, _ = attention_score.shape
 
         attention_score /= torch.sqrt(attention_score)  # 除以根号下文本长度
 
@@ -161,12 +161,12 @@ class MultiHeadSelfAttention(nn.Module):
         attention_probs = attention_probs.masked_fill(mask, 0.0)  # 将mask=0位置的概率，设置为零
         attention_probs = self.dropout(attention_probs)
 
-        outputs = torch.matmul(attention_probs, value)  # [batch, channel, time, time]  # TODO: 解决 att_probs 和 value 维度对不上的问题
+        outputs = torch.matmul(attention_probs, value)  # [batch, head_nums, time, head_size]
         outputs = outputs.transpose(1, 2)
-        outputs = torch.reshape(outputs, [batch, time, channel])
-        outputs = self.linear_output(outputs)
+        outputs = torch.reshape(outputs, [batch, self.channel, time])
+        outputs = self.linear_output(outputs.transpose(1, 2)).transpose(2, 1)  # nn.linear 要求 channel last
 
-        return outputs.transpose(1, 2)  # [batch, channel, time]
+        return outputs  # [batch, channel, time]
 
     def forward(self, x, mask):
         """
@@ -181,7 +181,6 @@ class MultiHeadSelfAttention(nn.Module):
         position_embedding = self.get_position_embedding(x)
         attention_score = self.calculate_matrix(position_embedding, query, key)
         x = self.calculate_masked_attention_score(attention_score, mask, value)
-
         x = self.dropout(x)
         x += residual
         return x
@@ -306,15 +305,47 @@ class ConformerEncoder(nn.Module):
         return x
 
 
+class VariantPredictor(nn.Module):
+    """ FastSpeech2 用来预测 F0、Energy、Duration 的模块；"""
+    def __init__(self, num_blocks=2, dropout_rate=0.2):
+        super().__init__()
+        blocks = nn.Sequential()
+        for _, _ in range(num_blocks):
+            blocks.append(
+
+            )
+
+    def forward(self, x):
+        return x
+
+
 class FastSpeech2(nn.Module):
     """ FastSpeech2 声学模型；"""
     def __init__(self, conf: dict):
         super().__init__()
 
         self.conf = conf
+        self.channel = conf.get('encoder_channels', 256)  # encoder、decoder 等的 channel 数，默认是256；
 
-        self.phoneme_embedding = self.get_phoneme_embedding()
+        # phoneme embedding, speaker embedding
+        self.get_phoneme_embedding = nn.Embedding(
+            num_embeddings=conf.get('phonemes_size', 213),  # 音素的数量
+            embedding_dim=self.channel,  # 默认和 encoder 的 channel 一致，256；
+            padding_idx=0,  # 音素“0”表示pad
+        )
+        self.get_speaker_embedding = nn.Embedding(
+            num_embeddings=conf.get('speaker_size', 64),  # 音色的数量
+            embedding_dim=self.channel,  # 默认和 encoder 的 channel 一致，256；
+        )
+        self.linear_speaker_embedding = nn.Linear(
+            in_features=self.channel + self.channel,  # encoder 的 channel + spk-emb 的 channel；它们可以不一样；
+            out_features=self.channel,
+        )
+
+        # encoder
         self.encoder = ConformerEncoder(conf)
+
+        # TODO variant predictor
 
     def forward(self, phoneme_ids, spk_id, duration):
         """
@@ -324,12 +355,31 @@ class FastSpeech2(nn.Module):
         :return:
         """
 
-        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)
-        phoneme_embedded = self.phoneme_embedding(phoneme_ids).transpose(1, 2)  # [batch, channel, time], channel first
+        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)  # # [batch, 1, time]
+        phoneme_embedded = self.get_phoneme_embedding(phoneme_ids).transpose(1, 2)  # [batch, channel, time]
+        # encoder
+        encoder_outputs = self.encoder(phoneme_embedded, phoneme_mask)  # [batch, channel, time]
+        # add spk-emb
+        speaker_embedding = self.get_speaker_embedding(spk_id).unsqueeze(-1)  # [batch, channel, 1]
+        encoder_outputs = self.add_speaker_embedding(encoder_outputs, speaker_embedding, phoneme_mask)
+        # f0, energy, duration
 
-        encoder_outputs = self.encoder(phoneme_embedded, phoneme_mask)
 
         return encoder_outputs
+
+    def add_speaker_embedding(self, encoder_outputs, speaker_embedding, phoneme_mask):
+        """
+        将 spk-emb 加到 encoder 的输出上；
+        :param encoder_outputs: [batch, channel, time]
+        :param speaker_embedding: [batch, channel, 1]
+        :param phoneme_mask: [batch, 1, time]
+        :return: [batch, channel, time]
+        """
+        time = encoder_outputs.shape[2]
+        speaker_embedding = torch.repeat_interleave(speaker_embedding, time, dim=-1)  # [batch, channel, time]
+        outputs = torch.concat([encoder_outputs, speaker_embedding], dim=1)  # [batch, channel * 2, time]
+        outputs = self.linear_speaker_embedding(outputs.transpose(1, 2)).transpose(2, 1)  # [batch, channel, time]
+        return outputs * phoneme_mask
 
     @staticmethod
     def get_phoneme_mask(phoneme_ids):
@@ -340,13 +390,3 @@ class FastSpeech2(nn.Module):
         """
         mask = torch.not_equal(phoneme_ids, 0)
         return mask.unsqueeze(-1).int()
-
-    def get_phoneme_embedding(self):
-        """ 对音素序列进行 embedding，在 encoder 之前；"""
-        num_embeddings = self.conf.get('phonemes_size', 213)  # 音素的数量
-        embedding_dim = 256  # 默认取256，和后面encoder、decoder的channel一致
-        return nn.Embedding(
-            num_embeddings=num_embeddings,
-            embedding_dim=embedding_dim,
-            padding_idx=0,  # 音素“0”表示pad
-        )
