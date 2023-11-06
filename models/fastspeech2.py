@@ -357,6 +357,27 @@ class VariantPredictor(nn.Module):
         return torch.mul(x, mask)  # [batch, 1, time]
 
 
+class LengthRegulator(nn.Module):
+    """ FastSpeech2 的长度规范模块； """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, duration, mask):
+        """
+        :param x: [batch, channel, time]
+        :param duration: [batch, 1, time]
+        :param mask: [batch, 1, time]
+        :return: [batch, channel, new_time]
+        """
+        max_length = torch.max(duration, dim=1)  # [batch, ]
+        outputs = []
+        for xi, di in zip(x, duration):
+            oi = torch.repeat_interleave(xi, di, dim=-1)
+            outputs.append(oi)
+        # TODO padding for the same length
+        return x
+
+
 class FastSpeech2(nn.Module):
     """ FastSpeech2 声学模型；"""
     def __init__(self, conf: dict):
@@ -383,6 +404,9 @@ class FastSpeech2(nn.Module):
         # encoder
         self.encoder = ConformerEncoder(conf)
 
+        # length regulator
+        self.length_regulator = LengthRegulator()
+
         # variant predictor
         self.f0_predictor = VariantPredictor()
         self.energy_predictor = VariantPredictor()
@@ -407,11 +431,11 @@ class FastSpeech2(nn.Module):
         )
         self.energy_dropout = nn.Dropout(0.2)
 
-    def forward(self, phoneme_ids, spk_id, duration, f0_gt, energy_gt):
+    def forward(self, phoneme_ids, spk_id, duration_gt = None, f0_gt = None, energy_gt = None):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
         :param spk_id: [batch] 输入的音色ID
-        :param duration: [batch, time] 输入的每个音素对应的帧数；
+        :param duration_gt: [batch, time] 输入的每个音素对应的帧数；
         :param f0_gt: [batch, time] 输入的每帧对应的F0值；
         :param energy_gt: [batch, time] 输入的每帧对应的F0值；
         :return:
@@ -424,10 +448,18 @@ class FastSpeech2(nn.Module):
         # add spk-emb
         speaker_embedding = self.get_speaker_embedding(spk_id).unsqueeze(-1)  # [batch, channel, 1]
         encoder_outputs = self.add_speaker_embedding(encoder_outputs, speaker_embedding, phoneme_mask)
-        # f0, energy, duration
+        # Length Regulation
+        duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)
+        if duration_gt is not None:  # inference
+            duration = duration_gt.int()
+        else:  # train
+            duration = nn.ReLU()(torch.exp(duration_predict) - 1)
+            duration = duration.int()
+        lr_outputs, decoder_mask = self.length_regulator(encoder_outputs, duration, phoneme_mask)  # TODO 解决 x 全是 NaN 的问题
+
+        # f0, energy 放在 LR 后面  TODO
         f0_predict = self.f0_predictor(encoder_outputs, phoneme_mask)
         energy_predict = self.energy_predictor(encoder_outputs, phoneme_mask)
-        duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)
 
         return encoder_outputs
 
