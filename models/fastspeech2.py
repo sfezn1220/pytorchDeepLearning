@@ -4,6 +4,21 @@ import torch
 import torch.nn as nn
 
 
+class LayerNorm(torch.nn.LayerNorm):
+    """ 对 nn.LayerNorm 进行包装，允许指定维度； """
+    def __init__(self, channel, dim=-1):
+        super(LayerNorm, self).__init__(channel)
+        self.dim = dim
+
+    def forward(self, x):
+        if self.dim == -1:
+            return super(LayerNorm, self).forward(x)
+        else:
+            x = x.transpose(self.dim, -1)
+            x = super(LayerNorm, self).forward(x)
+            return x.transpose(self.dim, -1)
+
+
 class ConformerBlock(nn.Module):
     """TTS transformer Block."""
     def __init__(self, conf: dict):
@@ -36,7 +51,7 @@ class MultiHeadSelfAttention(nn.Module):
     def __init__(self, in_out_channel=256, head_nums=2, dropout_rate=0.2):
         super().__init__()
 
-        self.layer_norm = nn.LayerNorm(in_out_channel)
+        self.layer_norm = LayerNorm(in_out_channel, dim=1)
 
         self.channel = in_out_channel
         self.head_nums = head_nums
@@ -175,7 +190,7 @@ class MultiHeadSelfAttention(nn.Module):
         :return: [batch, in_out_channel, time]
         """
         residual = nn.Identity()(x)
-        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        x = self.layer_norm(x)
         # self-attention
         query, key, value = self.calculate_qkv(x)
         position_embedding = self.get_position_embedding(x)
@@ -191,7 +206,7 @@ class ConvolutionModule(nn.Module):
     def __init__(self, in_out_channel=256, deep_wise_conv_kernel_size=7, dropout_rate=0.2):
         super().__init__()
 
-        self.layer_norm = nn.LayerNorm(in_out_channel)
+        self.layer_norm = LayerNorm(in_out_channel, dim=1)
         self.point_wise_conv1d_1 = nn.Conv1d(
             in_channels=in_out_channel,
             out_channels=in_out_channel * 2,
@@ -223,7 +238,7 @@ class ConvolutionModule(nn.Module):
         :return: [batch, in_out_channel, time]
         """
         residual = nn.Identity()(x)
-        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        x = self.layer_norm(x)  # layer norm 需要 channel last
         # point-wise-conv1d + GLU + deep-wise-conv1d + BN + swish + point-wise-conv1d + dropout
         x = self.point_wise_conv1d_1(x)
         x = self.glu(x)
@@ -239,7 +254,7 @@ class FeedForwardModule(nn.Module):
     def __init__(self, in_out_channel=256, mid_channel=1024, kernel_size=3, dropout_rate=0.2):
         super().__init__()
 
-        self.layer_norm = nn.LayerNorm(in_out_channel)
+        self.layer_norm = LayerNorm(in_out_channel, dim=1)
         self.conv1d_1 = nn.Conv1d(
             in_channels=in_out_channel,
             out_channels=mid_channel,
@@ -263,7 +278,7 @@ class FeedForwardModule(nn.Module):
         :return: [batch, in_out_channel, time]
         """
         residual = nn.Identity()(x)
-        x = self.layer_norm(x.transpose(1, 2)).transpose(1, 2)  # layer norm 需要 channel last
+        x = self.layer_norm(x)  # layer norm 需要 channel last
         # 3*3-conv1d-增加channel + relu + dropout + 3*3-conv1d-减小channel + dropout
         x = self.dropout(self.conv1d_2(self.dropout(self.relu(self.conv1d_1(x)))))
         x = residual + 0.5 * x
@@ -307,16 +322,39 @@ class ConformerEncoder(nn.Module):
 
 class VariantPredictor(nn.Module):
     """ FastSpeech2 用来预测 F0、Energy、Duration 的模块；"""
-    def __init__(self, num_blocks=2, dropout_rate=0.2):
+    def __init__(self, num_blocks=2, in_out_channel=256, kernel_size=3, dropout_rate=0.2):
         super().__init__()
-        blocks = nn.Sequential()
-        for _, _ in range(num_blocks):
-            blocks.append(
 
+        self.backbone = nn.Sequential()
+        for _ in range(num_blocks):
+            self.backbone.append(
+                nn.Conv1d(
+                    in_channels=in_out_channel,
+                    out_channels=in_out_channel,
+                    kernel_size=kernel_size,
+                    stride=1,
+                    padding=kernel_size // 2,
+                )
             )
+            self.backbone.append(nn.ReLU())
+            self.backbone.append(LayerNorm(in_out_channel, dim=1))
+            self.backbone.append(nn.Dropout(dropout_rate))
 
-    def forward(self, x):
-        return x
+        self.linear_output = nn.Linear(
+            in_features=in_out_channel,
+            out_features=1,
+        )
+
+    def forward(self, x, mask):
+        """
+        :param x: [batch, channel, time]
+        :param mask: [batch, 1, time]
+        :return: [batch, 1, time]
+        """
+        for layer in self.backbone:
+            x = layer(x)  # [batch, channel, time]
+        x = self.linear_output(x.transpose(1, 2)).transpose(1, 2)  # [batch, 1, time]
+        return torch.mul(x, mask)  # [batch, 1, time]
 
 
 class FastSpeech2(nn.Module):
@@ -345,7 +383,10 @@ class FastSpeech2(nn.Module):
         # encoder
         self.encoder = ConformerEncoder(conf)
 
-        # TODO variant predictor
+        # variant predictor
+        self.f0_predictor = VariantPredictor()
+        self.energy_predictor = VariantPredictor()
+        self.duration_predictor = VariantPredictor()
 
     def forward(self, phoneme_ids, spk_id, duration):
         """
@@ -363,7 +404,9 @@ class FastSpeech2(nn.Module):
         speaker_embedding = self.get_speaker_embedding(spk_id).unsqueeze(-1)  # [batch, channel, 1]
         encoder_outputs = self.add_speaker_embedding(encoder_outputs, speaker_embedding, phoneme_mask)
         # f0, energy, duration
-
+        f0_predict = self.f0_predictor(encoder_outputs, phoneme_mask)
+        energy_predict = self.energy_predictor(encoder_outputs, phoneme_mask)
+        duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)
 
         return encoder_outputs
 
