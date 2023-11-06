@@ -388,11 +388,32 @@ class FastSpeech2(nn.Module):
         self.energy_predictor = VariantPredictor()
         self.duration_predictor = VariantPredictor()
 
-    def forward(self, phoneme_ids, spk_id, duration):
+        # f0, energy: post-net
+        f0_conv_kernel_size = conf.get('f0_conv_kernel_size', 9)
+        self.f0_conv = nn.Conv1d(
+            in_channels=1,
+            out_channels=self.channel,
+            kernel_size=f0_conv_kernel_size,
+            stride=1,
+            padding=f0_conv_kernel_size // 2,
+        )
+        self.f0_dropout = nn.Dropout(0.2)
+        self.energy_conv = nn.Conv1d(
+            in_channels=1,
+            out_channels=self.channel,
+            kernel_size=f0_conv_kernel_size,
+            stride=1,
+            padding=f0_conv_kernel_size // 2,
+        )
+        self.energy_dropout = nn.Dropout(0.2)
+
+    def forward(self, phoneme_ids, spk_id, duration, f0_gt, energy_gt):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
         :param spk_id: [batch] 输入的音色ID
         :param duration: [batch, time] 输入的每个音素对应的帧数；
+        :param f0_gt: [batch, time] 输入的每帧对应的F0值；
+        :param energy_gt: [batch, time] 输入的每帧对应的F0值；
         :return:
         """
 
