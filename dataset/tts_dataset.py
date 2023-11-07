@@ -181,6 +181,7 @@ class TTSDataList(IterableDataset):
         )
         f0 = pw.stonemask(x=audio, f0=f0, temporal_positions=t, fs=self.sample_rate)
         f0 = torch.tensor(f0, dtype=torch.float32)
+        f0_length = len(f0)
         # padding
         if len(f0) < self.input_max_length:
             zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32)
@@ -190,6 +191,7 @@ class TTSDataList(IterableDataset):
         # get energy
         energy = np.sqrt(np.sum(spec ** 2, axis=0))
         energy = torch.tensor(energy, dtype=torch.float32)
+        energy_length = len(energy)
         # padding
         if len(energy) < self.input_max_length:
             zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32)
@@ -205,7 +207,7 @@ class TTSDataList(IterableDataset):
 
         assert len(energy) == len(f0) == mel.shape[0] == len(audio) // self.hop_size
 
-        return mel, f0, energy, audio, mel_mask, seconds, mel_length
+        return mel, f0, energy, audio, mel_mask, seconds, mel_length, f0_length, energy_length
 
     def initial_maps(self, spk_map_file, phoneme_map_file):
         """初始化： spk_map、phoneme_map；"""
@@ -232,7 +234,8 @@ class TTSDataList(IterableDataset):
         if self.shuffle is True:
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
         for data in self.data_list:
-            data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'], data['mel_length'] = self.get_features(data['path'])
+            (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
+             data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
             data['phoneme_ids'] = self.get_phoneme_ids(data['pinyin'])
             yield data
 

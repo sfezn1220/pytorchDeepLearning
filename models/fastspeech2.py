@@ -365,17 +365,24 @@ class LengthRegulator(nn.Module):
     def forward(self, x, duration, mask):
         """
         :param x: [batch, channel, time]
-        :param duration: [batch, 1, time]
+        :param duration: [batch, 1, time], masked;
         :param mask: [batch, 1, time]
         :return: [batch, channel, new_time]
         """
-        max_length = torch.max(duration, dim=1)  # [batch, ]
+        length = torch.sum(duration, dim=1)  # [batch, ]
+        max_length = torch.max(length)  # [1, ]
         outputs = []
-        for xi, di in zip(x, duration):
-            oi = torch.repeat_interleave(xi, di, dim=-1)
-            outputs.append(oi)
-        # TODO padding for the same length
-        return x
+        for x_i, duration_i in zip(x, duration):
+            output_i = torch.repeat_interleave(x_i, duration_i, dim=-1)  # [channel, time]
+            if output_i.shape[-1] < max_length:
+                zeros_pad = torch.zeros([output_i.shape[0], max_length - output_i.shape[-1]], dtype=output_i.dtype, device=output_i.device)
+                output_i = torch.concat([output_i, zeros_pad], dim=-1)  # [channel, time]
+            output_i = output_i.unsqueeze(0)  # [1, channel, time]
+            outputs.append(output_i)
+
+        outputs = torch.concat(outputs, dim=0)
+        new_mask = torch.not_equal(outputs, 0)[:, 0, :]
+        return outputs, new_mask
 
 
 class FastSpeech2(nn.Module):
@@ -431,7 +438,7 @@ class FastSpeech2(nn.Module):
         )
         self.energy_dropout = nn.Dropout(0.2)
 
-    def forward(self, phoneme_ids, spk_id, duration_gt = None, f0_gt = None, energy_gt = None):
+    def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy=None):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
         :param spk_id: [batch] 输入的音色ID
@@ -457,9 +464,13 @@ class FastSpeech2(nn.Module):
             duration = duration.int()
         lr_outputs, decoder_mask = self.length_regulator(encoder_outputs, duration, phoneme_mask)  # TODO 解决 x 全是 NaN 的问题
 
+        # 检查长度/帧数是否对得上：frames_pred, frames_duration_gts, mel_length, f0_length, energy_length
+        frames_pred = torch.sum(decoder_mask, dim=1)
+        frames_duration_gts = torch.sum(duration_gt, dim=1)
+
         # f0, energy 放在 LR 后面  TODO
-        f0_predict = self.f0_predictor(encoder_outputs, phoneme_mask)
-        energy_predict = self.energy_predictor(encoder_outputs, phoneme_mask)
+        # f0_predict = self.f0_predictor(encoder_outputs, phoneme_mask)
+        # energy_predict = self.energy_predictor(encoder_outputs, phoneme_mask)
 
         return encoder_outputs
 
