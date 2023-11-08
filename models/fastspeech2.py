@@ -69,6 +69,23 @@ class MultiHeadSelfAttention(nn.Module):
 
         self.linear_output = nn.Linear(in_features=in_out_channel, out_features=in_out_channel)
 
+    def forward(self, x, mask):
+        """
+        :param x: [batch, in_out_channel, time]
+        :param mask: [batch, 1, time]
+        :return: [batch, in_out_channel, time]
+        """
+        residual = nn.Identity()(x)
+        x = self.layer_norm(x)
+        # self-attention
+        query, key, value = self.calculate_qkv(x)
+        position_embedding = self.get_position_embedding(x)
+        attention_score = self.calculate_matrix(position_embedding, query, key)
+        x = self.calculate_masked_attention_score(attention_score, mask, value)
+        x = self.dropout(x)
+        x += residual
+        return x
+
     @staticmethod
     def get_position_embedding(x):
         """
@@ -165,12 +182,12 @@ class MultiHeadSelfAttention(nn.Module):
         """
         batch, _, time, _ = attention_score.shape
 
-        attention_score /= torch.sqrt(attention_score)  # 除以根号下文本长度
+        attention_score /= torch.sqrt(torch.tensor(self.head_size, dtype=torch.int32, device=attention_score.device))  # 除以根号下文本长度
 
         mask = mask.unsqueeze(dim=-1)  # [batch, 1, time, 1]
         mask = mask.eq(0)
 
-        attention_score = attention_score.masked_fill(mask, -1e9)  # 将mask=0位置的分数，设置为很小的值
+        attention_score = attention_score.masked_fill(mask, -1e34)  # 将mask=0位置的分数，设置为很小的值
 
         attention_probs = torch.softmax(attention_score, dim=-1)
         attention_probs = attention_probs.masked_fill(mask, 0.0)  # 将mask=0位置的概率，设置为零
@@ -182,23 +199,6 @@ class MultiHeadSelfAttention(nn.Module):
         outputs = self.linear_output(outputs.transpose(1, 2)).transpose(2, 1)  # nn.linear 要求 channel last
 
         return outputs  # [batch, channel, time]
-
-    def forward(self, x, mask):
-        """
-        :param x: [batch, in_out_channel, time]
-        :param mask: [batch, 1, time]
-        :return: [batch, in_out_channel, time]
-        """
-        residual = nn.Identity()(x)
-        x = self.layer_norm(x)
-        # self-attention
-        query, key, value = self.calculate_qkv(x)
-        position_embedding = self.get_position_embedding(x)
-        attention_score = self.calculate_matrix(position_embedding, query, key)
-        x = self.calculate_masked_attention_score(attention_score, mask, value)
-        x = self.dropout(x)
-        x += residual
-        return x
 
 
 class ConvolutionModule(nn.Module):
@@ -320,6 +320,28 @@ class ConformerEncoder(nn.Module):
         return x
 
 
+class ConformerDecoder(ConformerEncoder):
+    """TTS conformer Decoder，相当于 一个线性层 + Encoder；"""
+    def __init__(self, conf: dict):
+        super().__init__(conf)
+
+        self.channel = conf.get('encoder_channels', 256)  # encoder、decoder 等的 channel 数，默认是256；
+        self.linear_input = nn.Linear(
+            in_features=self.channel,
+            out_features=self.channel,
+        )
+
+    def forward(self, x: torch.tensor, mask: torch.tensor):
+        """
+        :param x: [batch, in_channel, time]
+        :param mask: [batch, 1, time]
+        :return: [batch, out_channel, time]
+        """
+        x = self.linear_input(x.transpose(1, 2)).transpose(1, 2)  # [batch, channel, time], nn.Linear 需要 channel last
+        x = torch.mul(x, mask)
+        return super().forward(x, mask)
+
+
 class VariantPredictor(nn.Module):
     """ FastSpeech2 用来预测 F0、Energy、Duration 的模块；"""
     def __init__(self, num_blocks=2, in_out_channel=256, kernel_size=3, dropout_rate=0.2):
@@ -362,12 +384,11 @@ class LengthRegulator(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, duration, mask):
+    def forward(self, x, duration):
         """
         :param x: [batch, channel, time]
         :param duration: [batch, 1, time], masked;
-        :param mask: [batch, 1, time]
-        :return: [batch, channel, new_time]
+        :return: [batch, channel, new_time], [batch, 1, new_time]
         """
         length = torch.sum(duration, dim=1)  # [batch, ]
         max_length = torch.max(length)  # [1, ]
@@ -381,7 +402,7 @@ class LengthRegulator(nn.Module):
             outputs.append(output_i)
 
         outputs = torch.concat(outputs, dim=0)
-        new_mask = torch.not_equal(outputs, 0)[:, 0, :]
+        new_mask = torch.not_equal(outputs, 0)[:, 0, :].unsqueeze(1).int()
         return outputs, new_mask
 
 
@@ -411,6 +432,9 @@ class FastSpeech2(nn.Module):
         # encoder
         self.encoder = ConformerEncoder(conf)
 
+        # decoder
+        self.decoder = ConformerDecoder(conf)
+
         # length regulator
         self.length_regulator = LengthRegulator()
 
@@ -419,7 +443,7 @@ class FastSpeech2(nn.Module):
         self.energy_predictor = VariantPredictor()
         self.duration_predictor = VariantPredictor()
 
-        # f0, energy: post-net
+        # f0, energy: make embedding
         f0_conv_kernel_size = conf.get('f0_conv_kernel_size', 9)
         self.f0_conv = nn.Conv1d(
             in_channels=1,
@@ -448,31 +472,51 @@ class FastSpeech2(nn.Module):
         :return:
         """
 
-        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)  # # [batch, 1, time]
+        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)  # [batch, 1, time]
         phoneme_embedded = self.get_phoneme_embedding(phoneme_ids).transpose(1, 2)  # [batch, channel, time]
+
         # encoder
         encoder_outputs = self.encoder(phoneme_embedded, phoneme_mask)  # [batch, channel, time]
+
         # add spk-emb
         speaker_embedding = self.get_speaker_embedding(spk_id).unsqueeze(-1)  # [batch, channel, 1]
         encoder_outputs = self.add_speaker_embedding(encoder_outputs, speaker_embedding, phoneme_mask)
+
         # Length Regulation
-        duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)
+        duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)  # [batch, 1, time]
         if duration_gt is not None:  # inference
             duration = duration_gt.int()
         else:  # train
             duration = nn.ReLU()(torch.exp(duration_predict) - 1)
             duration = duration.int()
-        lr_outputs, decoder_mask = self.length_regulator(encoder_outputs, duration, phoneme_mask)  # TODO 解决 x 全是 NaN 的问题
+        lr_outputs, lr_mask = self.length_regulator(encoder_outputs, duration)  # [batch, channel, new_time], [batch, 1, new_time]
 
         # 检查长度/帧数是否对得上：frames_pred, frames_duration_gts, mel_length, f0_length, energy_length
-        frames_pred = torch.sum(decoder_mask, dim=1)
-        frames_duration_gts = torch.sum(duration_gt, dim=1)
+        # frames_pred = torch.sum(decoder_mask, dim=1)
+        # frames_duration_gts = torch.sum(duration_gt, dim=1)
 
-        # f0, energy 放在 LR 后面  TODO
-        # f0_predict = self.f0_predictor(encoder_outputs, phoneme_mask)
-        # energy_predict = self.energy_predictor(encoder_outputs, phoneme_mask)
+        # f0, energy 放在 LR 后面
+        f0_predict = self.f0_predictor(lr_outputs, lr_mask)
+        energy_predict = self.energy_predictor(lr_outputs, lr_mask)
 
-        return encoder_outputs
+        # f0 embedding
+        if f0_gt is not None:  # inference
+            f0_embedding = self.f0_dropout(self.f0_conv(f0_predict))
+        else:  # train
+            f0_embedding = self.f0_dropout(self.f0_conv(f0_predict))
+
+        # energy embedding
+        if energy_gt is not None:  # inference
+            energy_embedding = self.energy_dropout(self.energy_conv(energy_predict))
+        else:  # train
+            energy_embedding = self.energy_dropout(self.energy_conv(energy_predict))
+
+        lr_outputs += f0_embedding + energy_embedding
+
+        # decoder
+        decoder_outputs = self.decoder(lr_outputs, lr_mask)
+
+        return decoder_outputs
 
     def add_speaker_embedding(self, encoder_outputs, speaker_embedding, phoneme_mask):
         """
