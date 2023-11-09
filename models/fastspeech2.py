@@ -316,7 +316,6 @@ class ConformerEncoder(nn.Module):
         for block in self.blocks:
             x = block(x, mask)
 
-        print(f"x.shape = {x.shape}, mask.shape = {mask.shape}")
         return x
 
 
@@ -340,6 +339,42 @@ class ConformerDecoder(ConformerEncoder):
         x = self.linear_input(x.transpose(1, 2)).transpose(1, 2)  # [batch, channel, time], nn.Linear 需要 channel last
         x = torch.mul(x, mask)
         return super().forward(x, mask)
+
+
+class PostNet(nn.Module):
+    """ FastSpeech2 最后处理 Mel谱的模块，包含残差结构；"""
+    def __init__(self, n_blocks=5, in_out_channel=80, mid_channel=512, kernel_size=5, dropout_rate=0.2):
+        super().__init__()
+
+        self.backbone = nn.Sequential()
+        for i in range(n_blocks):
+            in_channel = in_out_channel if i == 0 else mid_channel
+            out_channel = in_out_channel if i == n_blocks-1 else mid_channel
+            self.backbone.append(
+                nn.Conv1d(
+                    in_channels=in_channel,
+                    out_channels=out_channel,
+                    kernel_size=kernel_size,
+                    stride=1,
+                    padding=kernel_size // 2,
+                )
+            )
+            self.backbone.append(nn.BatchNorm1d(out_channel))
+            if i != n_blocks-1:
+                self.backbone.append(nn.Tanh())
+            self.backbone.append(nn.Dropout(dropout_rate))
+
+    def forward(self, x, mask):
+        """
+        :param x: [batch, mel_channel=80, time]
+        :param mask: [batch, 1, time]
+        :return: [batch, mel_channel=80, time]
+        """
+        residual = nn.Identity()(x)
+        for layer in self.backbone:
+            x = layer(x)
+        x = torch.mul(x, mask)
+        return residual + x
 
 
 class VariantPredictor(nn.Module):
@@ -462,6 +497,15 @@ class FastSpeech2(nn.Module):
         )
         self.energy_dropout = nn.Dropout(0.2)
 
+        # mel_before
+        self.linear_mel_before = nn.Linear(
+            in_features=self.channel,
+            out_features=80,  # 即Mel谱维度
+        )
+
+        # post net
+        self.post_net = PostNet()
+
     def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy=None):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
@@ -491,32 +535,53 @@ class FastSpeech2(nn.Module):
             duration = duration.int()
         lr_outputs, lr_mask = self.length_regulator(encoder_outputs, duration)  # [batch, channel, new_time], [batch, 1, new_time]
 
-        # 检查长度/帧数是否对得上：frames_pred, frames_duration_gts, mel_length, f0_length, energy_length
-        # frames_pred = torch.sum(decoder_mask, dim=1)
-        # frames_duration_gts = torch.sum(duration_gt, dim=1)
+        # f0, energy 的计算放在 LR 后面
+        f0_predict = self.f0_predictor(lr_outputs, lr_mask)  # [batch, 1, new_time]
+        energy_predict = self.energy_predictor(lr_outputs, lr_mask)  # [batch, 1, new_time]
 
-        # f0, energy 放在 LR 后面
-        f0_predict = self.f0_predictor(lr_outputs, lr_mask)
-        energy_predict = self.energy_predictor(lr_outputs, lr_mask)
-
-        # f0 embedding
-        if f0_gt is not None:  # inference
-            f0_embedding = self.f0_dropout(self.f0_conv(f0_predict))
-        else:  # train
-            f0_embedding = self.f0_dropout(self.f0_conv(f0_predict))
-
-        # energy embedding
-        if energy_gt is not None:  # inference
-            energy_embedding = self.energy_dropout(self.energy_conv(energy_predict))
-        else:  # train
-            energy_embedding = self.energy_dropout(self.energy_conv(energy_predict))
-
+        # f0 embedding, energy embedding
+        f0_embedding, energy_embedding = self.get_f0_energy_embedding(f0_gt, energy_gt, f0_predict, energy_predict)
         lr_outputs += f0_embedding + energy_embedding
 
         # decoder
         decoder_outputs = self.decoder(lr_outputs, lr_mask)
 
-        return decoder_outputs
+        # mel before
+        mel_before = self.linear_mel_before(decoder_outputs.transpose(1, 2)).transpose(2, 1)  # [batch, mel=80, time]
+
+        # mel after
+        mel_after = self.post_net(mel_before, lr_mask)  # [batch, mel=80, time]
+
+        return mel_after, mel_before, f0_predict, energy_predict, duration_predict
+
+    def get_f0_energy_embedding(self, f0_gt, energy_gt, f0_predict, energy_predict):
+        """
+        使用 f0_gt, energy_gt or f0_predict, energy_predict 来计算出 embedding；
+        :param f0_gt: [batch, time] or [batch, 1, time]
+        :param energy_gt: [batch, time] or [batch, 1, time]
+        :param f0_predict: [batch, 1, time]
+        :param energy_predict: [batch, 1, time]
+        :return: ([batch, 1, time], [batch, 1, time])
+        """
+        # f0 embedding
+        if f0_gt is not None:  # inference
+            if len(f0_gt.shape) == 2:
+                f0_gt = f0_gt.unsqueeze(1)  # [batch, 1, time]
+            f0 = f0_gt[:, :, :f0_predict.shape[-1]]
+        else:  # train
+            f0 = f0_predict
+        f0_embedding = self.f0_dropout(self.f0_conv(f0))
+
+        # energy embedding
+        if energy_gt is not None:  # inference
+            if len(energy_gt.shape) == 2:
+                energy_gt = energy_gt.unsqueeze(1)  # [batch, 1, time]
+            energy = energy_gt[:, :, :energy_predict.shape[-1]]
+        else:  # train
+            energy = energy_predict
+        energy_embedding = self.energy_dropout(self.energy_conv(energy))
+
+        return f0_embedding, energy_embedding
 
     def add_speaker_embedding(self, encoder_outputs, speaker_embedding, phoneme_mask):
         """

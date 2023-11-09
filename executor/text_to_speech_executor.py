@@ -32,6 +32,6 @@ class Executor:
             energy_length = batch["energy_length"].to(self.device)
 
             # 前向计算
-            pred = model(phoneme_ids, spk_id, duration, f0, energy, mel_length, f0_length, energy_length)
+            mel_after, mel_before, f0_predict, energy_predict, duration_predict = model(phoneme_ids, spk_id, duration, f0, energy, mel_length, f0_length, energy_length)
 
         return
