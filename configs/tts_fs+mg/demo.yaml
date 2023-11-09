@@ -2,11 +2,11 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 4
+batch_size: 32
 epochs: 100
 ckpt_path: "F:\\models_tts_fs+mg\\demo"
 
-train_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label-100pieces.txt"
+train_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label.txt"
 valid_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label-100pieces.txt"
 test_data: "G:\\Yuanshen\\4.jiaba_cut_16K_cersion-2.0_label-100pieces.txt"
 

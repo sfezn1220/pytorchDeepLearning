@@ -83,7 +83,7 @@ class MultiHeadSelfAttention(nn.Module):
         attention_score = self.calculate_matrix(position_embedding, query, key)
         x = self.calculate_masked_attention_score(attention_score, mask, value)
         x = self.dropout(x)
-        x += residual
+        x = x.clone() + residual
         return x
 
     @staticmethod
@@ -245,7 +245,7 @@ class ConvolutionModule(nn.Module):
         x = self.deep_wise_conv1d(x)
         x = self.point_wise_conv1d_2(self.swish(self.batch_norm(x)))
         x = self.dropout(x)
-        x += residual
+        x = x.clone() + residual
         return x
 
 
@@ -281,7 +281,7 @@ class FeedForwardModule(nn.Module):
         x = self.layer_norm(x)  # layer norm 需要 channel last
         # 3*3-conv1d-增加channel + relu + dropout + 3*3-conv1d-减小channel + dropout
         x = self.dropout(self.conv1d_2(self.dropout(self.relu(self.conv1d_1(x)))))
-        x = residual + 0.5 * x
+        x = residual + 0.5 * x.clone()
         return x
 
 
@@ -410,8 +410,8 @@ class VariantPredictor(nn.Module):
         """
         for layer in self.backbone:
             x = layer(x)  # [batch, channel, time]
-        x = self.linear_output(x.transpose(1, 2)).transpose(1, 2)  # [batch, 1, time]
-        return torch.mul(x, mask)  # [batch, 1, time]
+        y = self.linear_output(x.transpose(1, 2)).transpose(1, 2)  # [batch, 1, time]
+        return torch.mul(y.clone(), mask)  # [batch, 1, time]
 
 
 class LengthRegulator(nn.Module):
@@ -541,7 +541,7 @@ class FastSpeech2(nn.Module):
 
         # f0 embedding, energy embedding
         f0_embedding, energy_embedding = self.get_f0_energy_embedding(f0_gt, energy_gt, f0_predict, energy_predict)
-        lr_outputs += f0_embedding + energy_embedding
+        lr_outputs = lr_outputs.clone() + f0_embedding + energy_embedding
 
         # decoder
         decoder_outputs = self.decoder(lr_outputs, lr_mask)
