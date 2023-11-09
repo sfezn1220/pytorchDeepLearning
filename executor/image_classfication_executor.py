@@ -63,6 +63,8 @@ class Executor:
 
     def load_ckpt_auto(self, model):
         """训练开始之前，找找有没有最近的ckpt，自动加载；"""
+        os.makedirs(self.ckpt_path, exist_ok=True)
+
         # 找到最近的ckpt
         ckpt_list = []
         for file in os.listdir(self.ckpt_path):
@@ -94,9 +96,7 @@ class Executor:
 
     def run(self, model, train_data_loader, valid_data_loader):
 
-        # 尝试加载与训练模型
-        os.makedirs(self.ckpt_path, exist_ok=True)
-
+        # 尝试加载预训练模型
         last_epoch = -1
         last_epoch_may, model_may = self.load_ckpt_auto(model)
         if model_may is not None:

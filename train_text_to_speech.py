@@ -53,18 +53,21 @@ def train(model="demo"):
     model = FastSpeech2(configs).to(device)
     print(model)
 
-    # 损失函数、优化器
+    # 优化器
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(configs["lr"]))
 
     # 正式训练
     executor = Executor(
         trainer_conf=configs,
+        criterion=None,
+        optimizer=optimizer,
         device=device,
     )
 
-    executor.train_one_epoch(
+    executor.run(
         model=model,
-        data_loader=train_data_loader,
-        epoch=0
+        train_data_loader=train_data_loader,
+        valid_data_loader=valid_data_loader,
     )
 
 
