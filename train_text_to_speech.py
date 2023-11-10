@@ -8,7 +8,7 @@ import logging
 import torch.nn as nn
 
 from dataset import get_tts_dataloader
-from models import FastSpeech2
+from models import JointTTS
 from executor import TextToSpeechExecutor as Executor
 
 
@@ -50,7 +50,7 @@ def train(model="demo"):
     )
 
     # 模型
-    model = FastSpeech2(configs).to(device)
+    model = JointTTS(configs).to(device)
     print(model)
 
     # 优化器
