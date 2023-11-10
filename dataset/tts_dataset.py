@@ -9,6 +9,7 @@ import random
 import torch
 import soundfile as sf
 import pyworld as pw
+from scipy.interpolate import interp1d
 from torch.utils.data import IterableDataset
 from utils import read_json_lists
 from torch.utils.data import DataLoader
@@ -127,6 +128,37 @@ class TTSDataList(IterableDataset):
             phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
         return phoneme_ids
 
+    def continuous_f0(self, f0: np.array) -> np.array:
+        """ 连续化 f0 """
+        if sum(f0) == 0:
+            return f0
+
+        # pad start and end zero-value
+        for i in range(len(f0)):
+            if f0[i] != 0:
+                f0[:i] = f0[i]
+                break
+        for j in range(len(f0)-1, -1, -1):
+            if f0[j] != 0:
+                f0[j:] = f0[j]
+                break
+
+        # continuous
+        non_zero_index = []
+        for i in range(len(f0)):
+            if f0[i] != 0:
+                non_zero_index.append(i)
+
+        interp_fn = interp1d(non_zero_index, f0[non_zero_index])
+        f0 = interp_fn(np.arange(0, len(f0)))
+
+        # log
+        for i in range(len(f0)):
+            if f0[i] != 0:
+                f0[i] = np.log(f0[i])
+
+        return f0
+
     def get_features(self, audio_path):
         """读取音频、计算Mel谱；"""
         # get audio
@@ -180,6 +212,7 @@ class TTSDataList(IterableDataset):
             frame_period=1000 * self.hop_size / self.sample_rate,
         )
         f0 = pw.stonemask(x=audio, f0=f0, temporal_positions=t, fs=self.sample_rate)
+        f0 = self.continuous_f0(f0)
         f0 = torch.tensor(f0, dtype=torch.float32)
         f0_length = len(f0)
         # padding
@@ -277,6 +310,7 @@ if __name__ == "__main__":
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
     configs['batch_size'] = 16
+    configs["train_data"] = configs["valid_data"]
 
     # 测试 dataloader 的功能
     train_data_loader = get_tts_dataloader(data_path=configs["train_data"], data_conf=configs)

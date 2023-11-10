@@ -76,7 +76,7 @@ class Executor(BaseExecutor):
         epoch_mel_after_loss = 0.0
 
         batch_per_epoch = len(data_loader)
-        log_every_steps = min(batch_per_epoch-1, self.log_every_steps)
+        log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
         st = time.time()
         for batch_idx, batch in enumerate(data_loader):
@@ -122,7 +122,12 @@ class Executor(BaseExecutor):
             # 展示日志
             if batch_idx % log_every_steps == 0:
                 log = (f"train: epoch[{epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
-                       f"loss = {round(total_loss.item(), 2)}")
+                       f"total_loss = {round(total_loss.item(), 2)}, "
+                       f"f0_loss = {round(f0_loss.item(), 2)}, "
+                       f"energy_loss = {round(energy_loss.item(), 2)}, "
+                       f"dur_loss = {round(duration_loss.item(), 2)}, "
+                       f"mel_before_loss = {round(mel_before_loss.item(), 2)}, "
+                       f"mel_after_loss = {round(mel_after_loss.item(), 2)}.")
                 print(log)
                 self.write_training_log(log, "a")
 
