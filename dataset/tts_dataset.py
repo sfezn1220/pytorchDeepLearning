@@ -223,7 +223,7 @@ class TTSDataList(IterableDataset):
 
         # get energy
         energy = np.sqrt(np.sum(spec ** 2, axis=0))
-        energy = np.log(np.maximum(energy, 1e-10))
+        # energy = np.log(np.maximum(energy, 1e-10))
         energy = torch.tensor(energy, dtype=torch.float32)
         energy_length = len(energy)
         # padding
