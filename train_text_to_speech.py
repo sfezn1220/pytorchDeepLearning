@@ -50,7 +50,7 @@ def train(model="demo"):
     )
 
     # 模型
-    model = JointTTS(configs).to(device)
+    model = JointTTS(configs, device).to(device)
     print(model)
 
     # 优化器

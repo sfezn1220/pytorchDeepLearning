@@ -8,11 +8,13 @@ from .hifigan import HiFiGAN
 
 class JointTTS(nn.Module):
     """ 级联： 声学模型 + 声码器 """
-    def __init__(self, conf: dict):
+    def __init__(self, conf: dict, device="cuda"):
         super().__init__()
 
+        assert device in ["cpu", "cuda"]
+
         self.acoustic_model = FastSpeech2(conf)
-        self.vocoder = HiFiGAN(conf)
+        self.vocoder = HiFiGAN(conf, device=device)
 
     def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy=None):
         """
@@ -28,7 +30,7 @@ class JointTTS(nn.Module):
         mel_after, mel_before, f0_predict, energy_predict, duration_predict = self.acoustic_model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy)
 
         # 声码器
-        # audio = self.vocoder(mel_after)
-        audio = None
+        audio = self.vocoder(mel_after)
+        # audio = None
 
         return audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict
