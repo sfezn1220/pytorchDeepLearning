@@ -16,6 +16,11 @@ class JointTTS(nn.Module):
         self.acoustic_model = FastSpeech2(conf)
         self.vocoder = HiFiGAN(conf, device=device)
 
+        print('Parameters Count of acoustic_model = ',
+              sum(p.numel() for p in self.acoustic_model.parameters() if p.requires_grad))
+        print('Parameters Count of acoustic_model = ',
+              sum(p.numel() for p in self.vocoder.parameters() if p.requires_grad))
+
     def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy=None):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；

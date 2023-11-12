@@ -51,7 +51,7 @@ def train(model="demo"):
 
     # 模型
     model = JointTTS(configs, device).to(device)
-    print(model)
+    # print(model)
 
     # 优化器
     optimizer = torch.optim.Adam(model.parameters(), lr=float(configs["lr"]))
