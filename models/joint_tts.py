@@ -35,7 +35,7 @@ class JointTTS(nn.Module):
         mel_after, mel_before, f0_predict, energy_predict, duration_predict = self.acoustic_model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy)
 
         # 声码器
-        audio = self.vocoder(mel_after)
+        audio, discriminator_outputs = self.vocoder(mel_after)
         # audio = None
 
-        return audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict
+        return audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict, discriminator_outputs

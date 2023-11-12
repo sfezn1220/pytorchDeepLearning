@@ -2,7 +2,7 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 4
+batch_size: 2
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+mg\\demo"
 

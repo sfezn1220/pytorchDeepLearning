@@ -152,7 +152,7 @@ class UpSampleBlock(nn.Module):
         return x
 
 
-class HiFiGAN(nn.Module):
+class HiFiGANGenerator(nn.Module):
     """ HiFiGAN 声码器 """
     def __init__(self, conf: dict, device="cuda"):
         super().__init__()
@@ -242,3 +242,99 @@ class HiFiGAN(nn.Module):
         x = self.act_final(x)
 
         return x
+
+
+class HiFiGANPeriodDiscriminator(nn.Module):
+    """ HiFiGAN 声码器的：多周期判别器的单个输出； """
+    def __init__(self,
+                 period: int,
+                 num_blocks: int = 5,
+                 max_channel: int = 512,
+                 kernel_size: int = 5,
+                 device="cuda"
+                 ):
+        super().__init__()
+
+        assert device in ["cpu", "cuda"]
+
+        self.backbone = nn.Sequential()
+
+        in_channel = 1
+        for i in range(num_blocks):
+            out_channel = min(8 * (4 ** (i + 1)), max_channel)
+            self.backbone.append(
+                nn.Conv2d(
+                    in_channels=in_channel,
+                    out_channels=out_channel,
+                    kernel_size=(kernel_size, 1),
+                    stride=(3, 1),
+                    padding=(kernel_size // 2, 0),
+                )
+            )
+
+    def forward(self, audio):
+        """
+        :param audio: [batch, channel=1, time]
+        :return new_audio: [batch, channel=1, new_time]
+        """
+        # TODO: padding 到 period 的整数倍、最后的卷积、reshape；
+        return audio
+
+
+class HiFiGANMultiPeriodDiscriminator(nn.Module):
+    """ HiFiGAN 声码器的：多周期判别器； """
+    def __init__(self, conf: dict, device="cuda"):
+        super().__init__()
+
+        assert device in ["cpu", "cuda"]
+
+        self.period_discriminator_2 = HiFiGANPeriodDiscriminator(period=2, device=device)
+        self.period_discriminator_3 = HiFiGANPeriodDiscriminator(period=3, device=device)
+        self.period_discriminator_5 = HiFiGANPeriodDiscriminator(period=5, device=device)
+        self.period_discriminator_7 = HiFiGANPeriodDiscriminator(period=7, device=device)
+        self.period_discriminator_11 = HiFiGANPeriodDiscriminator(period=11, device=device)
+
+    def forward(self, audio):
+        """
+        :param audio: [batch, channel=1, time]
+        :return new_audio_list: [[batch, channel=1, new_time1], ...]
+        """
+        new_audio_2 = self.period_discriminator_2(audio)
+        new_audio_3 = self.period_discriminator_3(audio)
+        new_audio_5 = self.period_discriminator_5(audio)
+        new_audio_7 = self.period_discriminator_7(audio)
+        new_audio_11 = self.period_discriminator_11(audio)
+        return [
+            new_audio_2,
+            new_audio_3,
+            new_audio_5,
+            new_audio_7,
+            new_audio_11,
+        ]
+
+
+class HiFiGAN(nn.Module):
+    """ HiFiGAN 声码器，包含：生成器 + 判别器； """
+    def __init__(self, conf: dict, device="cuda"):
+        super().__init__()
+
+        assert device in ["cpu", "cuda"]
+
+        self.generator = HiFiGANGenerator(conf, device=device)
+        self.multi_period_discriminator = HiFiGANMultiPeriodDiscriminator(conf, device=device)
+        self.multi_scale_discriminator = None
+
+    def forward(self, x):
+        """
+        :param x: [batch, channel=80, time]
+        :return tuple(audio, new_audio_list): [batch, channel=1, time] and [[batch, channel=1, new_time1], ...]
+        """
+        # 生成器
+        audio = self.generator(x)
+
+        # 判别器
+        discriminator_outputs = []
+        discriminator_outputs.extend(self.multi_period_discriminator(audio))
+        # discriminator_outputs.extend(self.multi_scale_discriminator(x))
+
+        return audio, discriminator_outputs
