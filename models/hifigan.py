@@ -257,8 +257,10 @@ class HiFiGANPeriodDiscriminator(nn.Module):
 
         assert device in ["cpu", "cuda"]
 
-        self.backbone = nn.Sequential()
+        self.period = period  # 2, 3, 5, 7 or 11
 
+        # multi-conv2D
+        self.backbone = nn.Sequential()
         in_channel = 1
         for i in range(num_blocks):
             out_channel = min(8 * (4 ** (i + 1)), max_channel)
@@ -271,13 +273,35 @@ class HiFiGANPeriodDiscriminator(nn.Module):
                     padding=(kernel_size // 2, 0),
                 )
             )
+            self.backbone.append(
+                nn.LeakyReLU(0.2)
+            )
+            in_channel = out_channel
+
+        # final conv  TODO
+        # self.final_conv = nn.
 
     def forward(self, audio):
         """
         :param audio: [batch, channel=1, time]
         :return new_audio: [batch, channel=1, new_time]
         """
-        # TODO: padding 到 period 的整数倍、最后的卷积、reshape；
+        batch, channel, time = audio.shape
+
+        # padding 到 period 的整数倍
+        if time % self.period != 0:
+            zeros_pad = torch.zeros([batch, channel, self.period - time % self.period],
+                                    dtype=audio.dtype, device=audio.device)
+            audio = torch.concat([audio.clone(), zeros_pad], dim=-1)
+
+        # reshape: -> [batch, channel=1, -1, period]
+        audio = torch.reshape(audio.clone(), [batch, channel, -1, self.period])
+
+        # multi-conv2D
+        audio = self.backbone(audio)
+
+        # TODO: 最后的卷积、reshape 到一维；
+
         return audio
 
 
