@@ -258,6 +258,7 @@ class HiFiGANPeriodDiscriminator(nn.Module):
         assert device in ["cpu", "cuda"]
 
         self.period = period  # 2, 3, 5, 7 or 11
+        print(f"period = {period}")
 
         # multi-conv2D
         self.backbone = nn.Sequential()
@@ -278,8 +279,14 @@ class HiFiGANPeriodDiscriminator(nn.Module):
             )
             in_channel = out_channel
 
-        # final conv  TODO
-        # self.final_conv = nn.
+        # final conv2D
+        self.final_conv = nn.Conv2d(
+            in_channels=in_channel,
+            out_channels=1,
+            kernel_size=(3, 1),
+            stride=(3, 1),
+            padding=(3 // 2, 0),
+        )
 
     def forward(self, audio):
         """
@@ -300,7 +307,11 @@ class HiFiGANPeriodDiscriminator(nn.Module):
         # multi-conv2D
         audio = self.backbone(audio)
 
-        # TODO: 最后的卷积、reshape 到一维；
+        # final conv2D
+        audio = self.final_conv(audio)
+
+        # reshape: -> [batch, channel=1, new_time]
+        audio = torch.reshape(audio.clone(), [batch, channel, -1])
 
         return audio
 
@@ -337,6 +348,96 @@ class HiFiGANMultiPeriodDiscriminator(nn.Module):
         ]
 
 
+class HiFiGANMultiScaleDiscriminator(nn.Module):
+    """ HiFiGAN 声码器的：多尺度判别器； """
+    def __init__(self,
+                 conf: dict,
+                 kernel_sizes: list = [5, 3],
+                 down_sample_scales: list = [4, 4, 4, 4],
+                 init_channel: int = 16,
+                 max_channel: int = 512,
+                 device="cuda"
+                 ):
+        super().__init__()
+
+        assert device in ["cpu", "cuda"]
+
+        self.blocks = []
+
+        self.blocks.append(
+            nn.Conv1d(
+                in_channels=1,
+                out_channels=init_channel,
+                kernel_size=kernel_sizes[0] * kernel_sizes[1],
+                stride=1,
+                padding=(kernel_sizes[0] * kernel_sizes[1]) // 2,
+                padding_mode="reflect",
+            )
+        )
+
+        self.blocks.append(
+            nn.LeakyReLU(0.2)
+        )
+
+        in_channel = init_channel
+        for i, down_sample_scale_i in enumerate(down_sample_scales):
+            out_channel = max(in_channel * down_sample_scale_i, max_channel)
+
+            self.blocks.append(
+                nn.Conv1d(
+                    in_channels=in_channel,
+                    out_channels=out_channel,
+                    kernel_size=down_sample_scale_i * 10 + 1,
+                    stride=down_sample_scale_i,
+                    padding=(down_sample_scale_i * 10 + 1) // 2,
+                    groups=4,
+                )
+            )
+
+            in_channel = out_channel
+
+            self.blocks.append(
+                nn.LeakyReLU(0.2)
+            )
+
+        # final_conv1D_1
+        out_channel = max(in_channel * 2, max_channel)
+        self.blocks.append(
+            nn.Conv1d(
+                in_channels=in_channel,
+                out_channels=out_channel,
+                kernel_size=kernel_sizes[0],
+                stride=1,
+                padding=kernel_sizes[0] // 2,
+            )
+        )
+        self.blocks.append(
+            nn.LeakyReLU(0.2)
+        )
+
+        # final_conv1D_2
+        self.blocks.append(
+            nn.Conv1d(
+                in_channels=out_channel,
+                out_channels=1,
+                kernel_size=kernel_sizes[1],
+                stride=1,
+                padding=kernel_sizes[1] // 2,
+            )
+        )
+
+    def forward(self, audio):
+        """
+        :param audio: [batch, channel=1, time]
+        :return new_audio_list: [[batch, channel=1, new_time1], ...]
+        """
+        outputs = []
+        for block in self.blocks:
+            new_audio = block(audio)
+            outputs.append(new_audio)  # 将每一层的结果都收集起来、都输出；
+        return outputs
+
+
 class HiFiGAN(nn.Module):
     """ HiFiGAN 声码器，包含：生成器 + 判别器； """
     def __init__(self, conf: dict, device="cuda"):
@@ -346,7 +447,7 @@ class HiFiGAN(nn.Module):
 
         self.generator = HiFiGANGenerator(conf, device=device)
         self.multi_period_discriminator = HiFiGANMultiPeriodDiscriminator(conf, device=device)
-        self.multi_scale_discriminator = None
+        self.multi_scale_discriminator = HiFiGANMultiScaleDiscriminator(conf, device=device)
 
     def forward(self, x):
         """
@@ -359,6 +460,6 @@ class HiFiGAN(nn.Module):
         # 判别器
         discriminator_outputs = []
         discriminator_outputs.extend(self.multi_period_discriminator(audio))
-        # discriminator_outputs.extend(self.multi_scale_discriminator(x))
+        discriminator_outputs.extend(self.multi_scale_discriminator(x))
 
         return audio, discriminator_outputs
