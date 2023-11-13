@@ -506,7 +506,7 @@ class FastSpeech2(nn.Module):
         # post net
         self.post_net = PostNet()
 
-    def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy=None):
+    def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy_length=None):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
         :param spk_id: [batch] 输入的音色ID

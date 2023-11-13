@@ -2,7 +2,7 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 2
+batch_size: 1
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+mg\\demo"
 
@@ -31,7 +31,7 @@ mel_f_min: 0  # Mel谱的频率的最小值
 mel_f_max: 8000  # Mel谱的频率的最大值
 
 shuffle: True
-input_max_seconds: 12  # 输入音频的最大长度/秒，默认是 12秒
+input_max_seconds: 10  # 输入音频的最大长度/秒，默认是 12秒
 input_max_tokens: 196  # 输入音素的最大长度/个，默认是 256个字符
 
 phonemes_size: 213  # 音素的数量

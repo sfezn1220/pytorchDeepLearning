@@ -458,8 +458,18 @@ class HiFiGAN(nn.Module):
         audio = self.generator(x)
 
         # 判别器
+        discriminator_outputs = self.forward_discriminator(audio)
+
+        return audio, discriminator_outputs
+
+    def forward_discriminator(self, audio):
+        """
+        :param audio: [batch, channel=1, time]
+        :return new_audio_list: [[batch, channel=1, new_time1], ...]
+        """
+        # 判别器
         discriminator_outputs = []
         discriminator_outputs.extend(self.multi_period_discriminator(audio))
         discriminator_outputs.extend(self.multi_scale_discriminator(x))
 
-        return audio, discriminator_outputs
+        return discriminator_outputs

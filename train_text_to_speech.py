@@ -72,4 +72,6 @@ def train(model="demo"):
 
 
 if __name__ == "__main__":
+    torch.cuda.set_per_process_memory_fraction(0.5, 0)
+
     train(model="demo")

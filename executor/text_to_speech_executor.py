@@ -92,7 +92,7 @@ class Executor(BaseExecutor):
             energy_length = batch["energy_length"].to(self.device)
 
             # 前向计算
-            audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict, discriminator_outputs \
+            audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict, discriminator_outputs, true_features \
                 = model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
 
             # loss
