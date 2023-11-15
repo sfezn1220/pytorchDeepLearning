@@ -87,8 +87,10 @@ class TTSDataList(IterableDataset):
         # 读取MFA对齐结果中的所有的textgrid文件
         all_dur_list = read_all_textgrid(self.mfa_dir)
 
+        print(f"generator durations for MFA results...")
+
         new_data_list = []
-        for data in self.data_list:
+        for data in tqdm.tqdm(self.data_list):
             uttid = data['uttid']
             phonemes = str(data['pinyin']).split(",")
             if uttid not in all_dur_list:
@@ -306,7 +308,7 @@ def get_tts_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "..\\configs\\tts_fs+mg\\demo.yaml"
+    conf_file = "../configs/tts_fs+hifi\\demo.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 

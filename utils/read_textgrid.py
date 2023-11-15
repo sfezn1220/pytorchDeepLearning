@@ -1,6 +1,7 @@
 """ 读取 textgrid 文件；"""
 
 import os
+import tqdm
 import textgrid
 
 
@@ -68,7 +69,9 @@ def read_all_textgrid(textgred_dir="") -> dict:
 
     uttid2textgrid = {}
 
-    for spk in os.listdir(textgred_dir):
+    print(f"loading all textgrid files...")
+
+    for spk in tqdm.tqdm(os.listdir(textgred_dir)):
         if not os.path.isdir(os.path.join(textgred_dir, spk)):
             continue
         for file in os.listdir(os.path.join(textgred_dir, spk)):

@@ -8,7 +8,7 @@ import time
 
 class Executor:
 
-    def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu"):
+    def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu", name: str = ""):
         self.criterion = criterion  # 损失函数
         self.optimizer = optimizer  # 优化函数
         self.device = device  # gpu or cpu
@@ -19,6 +19,8 @@ class Executor:
 
         self.log_every_steps = trainer_conf["log_every_steps"]  # 每多少个step展示一次日志
 
+        self.name = name + "-" if len(name) > 0 else ""
+
     def write_training_log(self, logs: str, mode: str = "a"):
         """记录下日志"""
         log_file = os.path.join(self.ckpt_path, "training.log")
@@ -28,7 +30,7 @@ class Executor:
     def save_ckpt(self, model, epoch):
         """存储ckpt，并定期删除多余的；"""
         # 模型权重存储在这里
-        model_path = os.path.join(self.ckpt_path, 'model_epoch-{:04d}.pth'.format(epoch))
+        model_path = os.path.join(self.ckpt_path, self.name + 'model_epoch-{:04d}.pth'.format(epoch))
         torch.save(
             {
                 'epoch': epoch,
@@ -36,7 +38,7 @@ class Executor:
             }, model_path
         )
         # 优化器参数存储在这里
-        states_path = os.path.join(self.ckpt_path, 'states_epoch-{:04d}.pth'.format(epoch))
+        states_path = os.path.join(self.ckpt_path, self.name + 'states_epoch-{:04d}.pth'.format(epoch))
         torch.save(
             {
                 'epoch': epoch,
@@ -46,11 +48,9 @@ class Executor:
         # 删除过多的ckpt文件
         ckpt_list = []
         for file in os.listdir(self.ckpt_path):
-            if "epoch-0049.pth" in file:  # 特例，单独保存下这个ckpt、不删除
+            if not file.startswith(self.name + "model_epoch-"):
                 continue
-            if not file.startswith("model_epoch-"):
-                continue
-            epoch = int(file.lstrip("model_epoch-").rstrip(".pth"))
+            epoch = int(file.lstrip(self.name + "model_epoch-").rstrip(".pth"))
             full_path_1 = os.path.join(self.ckpt_path, file)
             full_path_2 = os.path.join(self.ckpt_path, file.replace("model_epoch-", "states_epoch-"))
             ckpt_list.append([epoch, full_path_1, full_path_2])
@@ -68,9 +68,9 @@ class Executor:
         # 找到最近的ckpt
         ckpt_list = []
         for file in os.listdir(self.ckpt_path):
-            if not file.startswith("model_epoch-"):
+            if not file.startswith(self.name + "model_epoch-"):
                 continue
-            epoch = int(file.lstrip("model_epoch-").rstrip(".pth"))
+            epoch = int(file.lstrip(self.name + "model_epoch-").rstrip(".pth"))
             full_path_1 = os.path.join(self.ckpt_path, file)
             full_path_2 = os.path.join(self.ckpt_path, file.replace("model_epoch-", "states_epoch-"))
             ckpt_list.append([epoch, full_path_1, full_path_2])

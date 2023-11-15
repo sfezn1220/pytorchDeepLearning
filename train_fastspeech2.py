@@ -1,4 +1,4 @@
-""" 训练、测试的主函数； """
+""" 训练、测试 FastSpeech2 声学模型的主函数； """
 
 import os
 import torch
@@ -8,14 +8,14 @@ import logging
 import torch.nn as nn
 
 from dataset import get_tts_dataloader
-from models import JointTTS
+from models import FastSpeech2
 from executor import TextToSpeechExecutor as Executor
 
 
 def train(model="demo"):
     """训练的代码"""
     # config 文件
-    conf_file = f"configs\\tts_fs+mg\\{model}.yaml"
+    conf_file = f"configs\\tts_fs+hifi\\{model}.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -50,7 +50,7 @@ def train(model="demo"):
     )
 
     # 模型
-    model = JointTTS(configs, device).to(device)
+    model = FastSpeech2(configs).to(device)
     # print(model)
 
     # 优化器
@@ -62,6 +62,7 @@ def train(model="demo"):
         criterion=None,
         optimizer=optimizer,
         device=device,
+        name="fastspeech2",
     )
 
     executor.run(
@@ -72,6 +73,7 @@ def train(model="demo"):
 
 
 if __name__ == "__main__":
-    torch.cuda.set_per_process_memory_fraction(0.5, 0)
+    # 最多使用90%的显存；需要设置一下，要不显存使用过多，会强制重启windows
+    torch.cuda.set_per_process_memory_fraction(0.9, 0)
 
     train(model="demo")

@@ -10,8 +10,8 @@ from .image_classfication_executor import Executor as BaseExecutor
 
 class Executor(BaseExecutor):
 
-    def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu"):
-        super().__init__(trainer_conf, None, optimizer, device)
+    def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu", name: str = ""):
+        super().__init__(trainer_conf, None, optimizer, device, name)
 
     @staticmethod
     def calculate_1d_loss(gt, predict, loss_func="MSE"):
@@ -92,7 +92,7 @@ class Executor(BaseExecutor):
             energy_length = batch["energy_length"].to(self.device)
 
             # 前向计算
-            audio, mel_after, mel_before, f0_predict, energy_predict, duration_predict, discriminator_outputs, true_features \
+            mel_after, mel_before, f0_predict, energy_predict, duration_predict \
                 = model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
 
             # loss
