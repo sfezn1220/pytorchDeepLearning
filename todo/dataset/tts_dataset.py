@@ -11,12 +11,9 @@ import soundfile as sf
 import pyworld as pw
 from scipy.interpolate import interp1d
 from torch.utils.data import IterableDataset
-from utils import read_json_lists
 from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
-import torch.nn.functional as F
 
-from utils import read_all_textgrid
+from todo.utils import read_all_textgrid
 
 
 class TTSDataList(IterableDataset):
@@ -311,7 +308,7 @@ def get_tts_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "../configs/tts_fs+hifi\\demo.yaml"
+    conf_file = "../configs/tts_fs+hifi/demo.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
