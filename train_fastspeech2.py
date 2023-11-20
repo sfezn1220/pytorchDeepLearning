@@ -37,7 +37,7 @@ def train(model="demo"):
     # 读取 configs.yaml
     train_data_conf = configs
     valid_data_conf = copy.deepcopy(train_data_conf)
-    valid_data_conf['shuffle'] = False
+    # valid_data_conf['shuffle'] = False
 
     # 数据集：
     train_data_loader = get_tts_dataloader(
@@ -74,6 +74,6 @@ def train(model="demo"):
 
 if __name__ == "__main__":
     # 最多使用90%的显存；需要设置一下，要不显存使用过多，会强制重启windows
-    torch.cuda.set_per_process_memory_fraction(0.9, 0)
+    torch.cuda.set_per_process_memory_fraction(0.93, 0)
 
     train(model="demo")

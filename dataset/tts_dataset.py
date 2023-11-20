@@ -72,6 +72,9 @@ class TTSDataList(IterableDataset):
                 if float(duration) >= self.input_max_seconds:
                     print(f"skip audio with duration {duration}")
                     continue
+                if len(str(pinyin).split(',')) >= self.input_max_tokens:
+                    print(f"skip audio with {len(str(pinyin).split(','))} phoneme tokens")
+                    continue
                 data = {}
                 data["spk"] = spk
                 data["spk_id"] = self.spk_map[spk]

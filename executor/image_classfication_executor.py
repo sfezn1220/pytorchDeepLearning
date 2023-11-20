@@ -53,13 +53,19 @@ class Executor:
             epoch = int(file.lstrip(self.name + "model_epoch-").rstrip(".pth"))
             full_path_1 = os.path.join(self.ckpt_path, file)
             full_path_2 = os.path.join(self.ckpt_path, file.replace("model_epoch-", "states_epoch-"))
-            ckpt_list.append([epoch, full_path_1, full_path_2])
+            full_path_3 = os.path.join(self.ckpt_path, file.replace("model_epoch-", "predict_epoch-").replace(".pth", ""))
+            ckpt_list.append([epoch, full_path_1, full_path_2, full_path_3])
 
         ckpt_list.sort(reverse=True)
 
-        for _, path_1, path_2 in ckpt_list[self.max_ckpt_save:]:
-            os.remove(path_1)
-            os.remove(path_2)
+        for _, path_1, path_2, path_3 in ckpt_list[self.max_ckpt_save:]:
+            for path in [path_1, path_2, path_3]:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except:
+                        # shutil.rmtree(path)  # TODO 写个循环，先删除文件夹内的所有文件，再删除空的文件夹本身；
+                        pass
 
     def load_ckpt_auto(self, model):
         """训练开始之前，找找有没有最近的ckpt，自动加载；"""
