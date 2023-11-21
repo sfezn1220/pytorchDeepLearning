@@ -7,15 +7,15 @@ import yaml
 import logging
 import torch.nn as nn
 
-from dataset import get_tts_dataloader
-from todo.models import FastSpeech2
-from executor import TextToSpeechExecutor as Executor
+from text_to_speech.fastspeech2.fastspeech_dataset import get_tts_dataloader
+from text_to_speech.fastspeech2.fastspeech_executor import FastSpeechExecutor
+from text_to_speech.fastspeech2.fastspeech_models import FastSpeech2
 
 
-def train(model="demo"):
+def train(conf_file: str):
     """训练的代码"""
     # config 文件
-    conf_file = f"configs\\tts_fs+hifi\\{model}.yaml"
+    # conf_file = f"configs\\tts_fs+hifi\\{model}.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
@@ -57,7 +57,7 @@ def train(model="demo"):
     optimizer = torch.optim.Adam(model.parameters(), lr=float(configs["lr"]))
 
     # 正式训练
-    executor = Executor(
+    executor = FastSpeechExecutor(
         trainer_conf=configs,
         criterion=None,
         optimizer=optimizer,
@@ -76,4 +76,4 @@ if __name__ == "__main__":
     # 最多使用90%的显存；需要设置一下，要不显存使用过多，会强制重启windows
     torch.cuda.set_per_process_memory_fraction(0.93, 0)
 
-    train(model="demo")
+    train(conf_file=f"../examples/Yuanshen/configs/fs+hifi/demo.yaml")

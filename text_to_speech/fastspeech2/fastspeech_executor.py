@@ -7,10 +7,11 @@ import torch.nn as nn
 import time
 import matplotlib.pyplot as plt
 import numpy as np
-from .image_classfication_executor import Executor as BaseExecutor
+
+from bin.base_executor import BaseExecutor
 
 
-class Executor(BaseExecutor):
+class FastSpeechExecutor(BaseExecutor):
 
     def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu", name: str = ""):
         super().__init__(trainer_conf, None, optimizer, device, name)
@@ -67,7 +68,6 @@ class Executor(BaseExecutor):
 
         mel_gt = mel_gt[:, :, :mel_after.shape[-1]]
 
-        # TODO 将三个Mel谱裁剪到同一长度；
         mel_gt = mel_gt.transpose(1, 2).detach().cpu().numpy()  # -> [batch, time, channel=80]
         mel_before = mel_before.transpose(1, 2).detach().cpu().numpy()  # -> [batch, time, channel=80]
         mel_after = mel_after.transpose(1, 2).detach().cpu().numpy()  # -> [batch, time, channel=80]
@@ -266,6 +266,9 @@ class Executor(BaseExecutor):
                 print(log)
                 self.write_training_log(log, "a")
 
+                # 保存验证集的 Mel谱，用于对比；不用存太多；
+                self.save_mel_images(mel_gt, mel_before, mel_after, epoch, uttids)
+
         # end of epoch
         epoch_total_loss /= batch_per_epoch
         epoch_f0_loss /= batch_per_epoch
@@ -285,6 +288,3 @@ class Executor(BaseExecutor):
                f"mel_after_loss = {round(epoch_mel_after_loss, 3)}.\n")
         print(log)
         self.write_training_log(log, "a")
-
-        # 保存验证集的 Mel谱，用于对比
-        self.save_mel_images(mel_gt, mel_before, mel_after, epoch, uttids)
