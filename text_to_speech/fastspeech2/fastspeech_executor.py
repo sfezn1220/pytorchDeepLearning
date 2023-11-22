@@ -2,66 +2,47 @@
 
 import os
 import shutil
+import copy
 import torch
 import torch.nn as nn
 import time
+import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 
 from bin.base_executor import BaseExecutor
+from text_to_speech.fastspeech2.fastspeech_models import FastSpeech2
+from text_to_speech.fastspeech2.fastspeech_dataset import get_tts_dataloader
+
+from text_to_speech.loss import calculate_1d_loss, calculate_2d_loss
 
 
 class FastSpeechExecutor(BaseExecutor):
 
-    def __init__(self, trainer_conf: dict, criterion, optimizer, device: str = "gpu", name: str = ""):
-        super().__init__(trainer_conf, None, optimizer, device, name)
+    def __init__(self, conf_file: str, name: str = "fastspeech2"):
+        super().__init__(conf_file, name)
 
-    @staticmethod
-    def calculate_1d_loss(gt, predict, loss_func="MSE"):
-        """
-        计算两个一维向量之间的 loss
-        :param gt: [batch, time1] or [batch, 1, time1]
-        :param predict: [batch, time2] or [batch, 1, time2]
-        :param loss_func: MSE or MAE
-        :return: float32
-        """
-        if len(gt.shape) == 3:
-            gt = gt.squeeze(1)  # [batch, time]
-        if len(predict.shape) == 3:
-            predict = predict.squeeze(1)  # [batch, time]
+        # 读取 configs.yaml
+        train_data_conf = copy.deepcopy(self.trainer_conf)
+        valid_data_conf = copy.deepcopy(self.trainer_conf)
+        # valid_data_conf['shuffle'] = False
 
-        if gt.shape[-1] > predict.shape[-1]:
-            gt = gt[:, :predict.shape[-1]]
-        elif gt.shape[-1] < predict.shape[-1]:
-            predict = predict[:, :gt.shape[-1]]
+        # 数据集：
+        self.train_data_loader = get_tts_dataloader(
+            data_path=train_data_conf["train_data"],
+            data_conf=train_data_conf,
+        )
+        self.valid_data_loader = get_tts_dataloader(
+            data_path=valid_data_conf["valid_data"],
+            data_conf=valid_data_conf,
+        )
 
-        if loss_func == "MSE":
-            return nn.MSELoss()(predict, gt)
-        elif loss_func == "MAE":
-            return nn.L1Loss()(predict, gt)
-        else:
-            raise ValueError(f"loss_function must in ['MSE', 'MAE']")
+        # 模型
+        self.model = FastSpeech2(self.trainer_conf).to(self.device)
+        # print(model)
 
-    @staticmethod
-    def calculate_2d_loss(gt, predict, loss_func="MSE"):
-        """
-        计算两个二维向量之间的 loss
-        :param gt: [batch, channel, time1]
-        :param predict: [batch, channel, time1]
-        :param loss_func: MSE or MAE
-        :return: float32
-        """
-        if gt.shape[-1] > predict.shape[-1]:
-            gt = gt[:, :, :predict.shape[-1]]
-        elif gt.shape[-1] < predict.shape[-1]:
-            predict = predict[:, :, :gt.shape[-1]]
-
-        if loss_func == "MSE":
-            return nn.MSELoss()(predict, gt)
-        elif loss_func == "MAE":
-            return nn.L1Loss()(predict, gt)
-        else:
-            raise ValueError(f"loss_function must in ['MSE', 'MAE']")
+        # 优化器
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.trainer_conf["lr"]))
 
     def save_mel_images(self, mel_gt, mel_before, mel_after, epoch, uttids):
         """ 保存 Mel谱的图片，用于对比； """
@@ -100,13 +81,14 @@ class FastSpeechExecutor(BaseExecutor):
             plt.savefig(image_path)
             plt.close()
 
-    def run(self, model, train_data_loader, valid_data_loader):
-        super().run(model, train_data_loader, valid_data_loader)
+    def run(self):
+        super().run()
 
-    def train_one_epoch(self, model, data_loader, epoch):
+    def train_one_epoch(self):
         """ 训练一个 epoch """
 
-        model.train()
+        self.model.train()
+        flag = "train"
 
         epoch_total_loss = 0.0
         epoch_f0_loss = 0.0
@@ -115,12 +97,13 @@ class FastSpeechExecutor(BaseExecutor):
         epoch_mel_before_loss = 0.0
         epoch_mel_after_loss = 0.0
 
-        batch_per_epoch = len(data_loader)
+        batch_per_epoch = len(self.train_data_loader)
         log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
         st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in enumerate(self.train_data_loader):
 
+            uttids = batch["uttid"]
             phoneme_ids = batch["phoneme_ids"].to(self.device)
             spk_id = batch["spk_id"].to(self.device)
             duration_gt = batch["duration"].to(self.device)
@@ -133,18 +116,18 @@ class FastSpeechExecutor(BaseExecutor):
 
             # 前向计算
             mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                = model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
+                = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
 
             # loss
-            f0_loss = self.calculate_1d_loss(f0_gt, f0_predict, "MSE")
-            energy_loss = self.calculate_1d_loss(energy_gt, energy_predict, "MSE")
+            f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
+            energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
 
             duration_gt = torch.log(duration_gt + 1)
-            duration_loss = self.calculate_1d_loss(duration_gt, duration_predict, "MSE")
+            duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
 
             mel_gt = mel_gt.transpose(1, 2)
-            mel_before_loss = self.calculate_2d_loss(mel_gt, mel_before, "MAE")
-            mel_after_loss = self.calculate_2d_loss(mel_gt, mel_after, "MAE")
+            mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
+            mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
 
             total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
 
@@ -161,9 +144,8 @@ class FastSpeechExecutor(BaseExecutor):
             epoch_mel_after_loss += mel_after_loss.item()
 
             # 展示日志
-            flag = "train"
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"f0_loss = {round(f0_loss.item(), 3)}, "
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
@@ -183,7 +165,7 @@ class FastSpeechExecutor(BaseExecutor):
         et = time.time()
         log = (f"{flag} epoch end, {round((et - st)/60, 2)} minutes,"
                f"\n"
-               f"epoch[{epoch}]: "
+               f"epoch[{self.epoch}]: "
                f"total_loss = {round(epoch_total_loss, 3)}, "
                f"f0_loss = {round(epoch_f0_loss, 3)}, "
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
@@ -193,12 +175,11 @@ class FastSpeechExecutor(BaseExecutor):
         print(log)
         self.write_training_log(log, "a")
 
-    def valid_one_epoch(self, model, data_loader, epoch):
+    def valid_one_epoch(self):
         """ 验证一个 epoch """
-        # print(f"skip valid")
-        # pass
 
-        model.eval()
+        self.model.eval()
+        flag = "valid"
 
         epoch_total_loss = 0.0
         epoch_f0_loss = 0.0
@@ -207,11 +188,11 @@ class FastSpeechExecutor(BaseExecutor):
         epoch_mel_before_loss = 0.0
         epoch_mel_after_loss = 0.0
 
-        batch_per_epoch = len(data_loader)
+        batch_per_epoch = len(self.valid_data_loader)
         log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
         st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in enumerate(self.valid_data_loader):
 
             uttids = batch["uttid"]
             phoneme_ids = batch["phoneme_ids"].to(self.device)
@@ -226,7 +207,7 @@ class FastSpeechExecutor(BaseExecutor):
 
             # 前向计算
             mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                = model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
+                = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
 
             # loss
             f0_loss = self.calculate_1d_loss(f0_gt, f0_predict, "MSE")
@@ -254,9 +235,8 @@ class FastSpeechExecutor(BaseExecutor):
             epoch_mel_after_loss += mel_after_loss.item()
 
             # 展示日志
-            flag = "valid"
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"f0_loss = {round(f0_loss.item(), 3)}, "
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
@@ -267,7 +247,7 @@ class FastSpeechExecutor(BaseExecutor):
                 self.write_training_log(log, "a")
 
                 # 保存验证集的 Mel谱，用于对比；不用存太多；
-                self.save_mel_images(mel_gt, mel_before, mel_after, epoch, uttids)
+                self.save_mel_images(mel_gt, mel_before, mel_after, self.epoch, uttids)
 
         # end of epoch
         epoch_total_loss /= batch_per_epoch
@@ -279,7 +259,7 @@ class FastSpeechExecutor(BaseExecutor):
         et = time.time()
         log = (f"{flag} epoch end, {round((et - st)/60, 2)} minutes,"
                f"\n"
-               f"epoch[{epoch}]: "
+               f"epoch[{self.epoch}]: "
                f"total_loss = {round(epoch_total_loss, 3)}, "
                f"f0_loss = {round(epoch_f0_loss, 3)}, "
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
@@ -288,3 +268,44 @@ class FastSpeechExecutor(BaseExecutor):
                f"mel_after_loss = {round(epoch_mel_after_loss, 3)}.\n")
         print(log)
         self.write_training_log(log, "a")
+
+    def gen_mel_spec(self, dir_name="gen_mel_spec"):
+        """ 训练一个 epoch """
+
+        # 尝试加载预训练模型
+        last_epoch = -1
+        last_epoch_may, model_may = self.load_ckpt_auto()
+        if model_may is not None:
+            self.model = model_may
+            last_epoch = last_epoch_may
+
+        # Mel谱的存储位置：
+        mel_save_dir = os.path.join(self.ckpt_path, dir_name + '-epoch-{:04d}'.format(last_epoch))
+        if not os.path.exists(mel_save_dir):
+            os.mkdir(mel_save_dir)
+
+        self.model.eval()
+
+        for batch in tqdm.tqdm(self.train_data_loader):
+
+            uttids = batch["uttid"]
+            phoneme_ids = batch["phoneme_ids"].to(self.device)
+            spk_id = batch["spk_id"].to(self.device)
+            duration_gt = batch["duration"].to(self.device)
+            mel_gt = batch["mel"].to(self.device)
+            f0_gt = batch["f0"].to(self.device)
+            energy_gt = batch["energy"].to(self.device)
+            mel_length = batch["mel_length"].to(self.device)
+            f0_length = batch["f0_length"].to(self.device)
+            energy_length = batch["energy_length"].to(self.device)
+
+            # 前向推理
+            mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
+
+            # 存储Mel谱
+            mel_after = mel_after.detach().squeeze(0).cpu().numpy()  # -> [channel=80， time]
+
+            for mel_after_i, uttids_i in zip(mel_after, uttids):
+                mel_save_path = os.path.join(mel_save_dir, str(uttids_i) + ".npy")
+                np.save(file=mel_save_path, arr=mel_after_i)

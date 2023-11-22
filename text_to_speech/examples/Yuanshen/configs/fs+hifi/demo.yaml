@@ -2,7 +2,7 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 8  # 12及以上会显存不足；
+batch_size: 20
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+hifi\\demo"
 
@@ -17,7 +17,7 @@ mfa_dir: "G:\\tts_train_data\\20231114_16K_Yuanshen34+Aishell3select60\\mfa_alig
 
 max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
 
-log_every_steps: 30  # 每多少个step展示一次日志
+log_every_steps: 10  # 每多少个step展示一次日志
 
 # 数据集的操作
 sample_rate: 16000  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；

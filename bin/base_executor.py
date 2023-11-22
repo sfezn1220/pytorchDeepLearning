@@ -1,26 +1,50 @@
 """ 定义基础的训练过程；与任务无关； """
 
-from typing import Dict
 import os
+import yaml
 import shutil
 import torch
-import time
+import logging
 
 
 class BaseExecutor:
 
-    def __init__(self, trainer_conf: Dict, criterion, optimizer, device: str = "gpu", name: str = ""):
+    def __init__(self, conf_file: str, name: str = ""):
         """ 定义基础的训练过程；与任务无关； """
 
-        self.criterion = criterion  # 损失函数
-        self.optimizer = optimizer  # 优化函数
-        self.device = device  # gpu or cpu
+        # 确定配置文件
+        with open(conf_file, 'r', encoding='utf-8') as r1:
+            self.trainer_conf = yaml.load(r1, Loader=yaml.FullLoader)
 
-        self.max_epochs = trainer_conf["epochs"]
-        self.ckpt_path = trainer_conf["ckpt_path"]
-        self.max_ckpt_save = trainer_conf["max_ckpt_save"]
+        # GPU or CPU
+        gpu = str(self.trainer_conf["gpu"])
+        os.environ['CUDA_VISIBLE_DEVICES'] = gpu
+        if gpu == "-1":
+            self.device = "cpu"
+            logging.info(f"Use device: CPU.")
+        elif gpu == "0":
+            self.device = "cuda"
+            logging.info(f"Use device: GPU {gpu}.")
+        else:
+            raise ValueError(f"\"--gpu\" must in [-1, 0], while input is {gpu}")
 
-        self.log_every_steps = trainer_conf["log_every_steps"]  # 每多少个step展示一次日志
+        # Set random seed
+        torch.manual_seed(777)
+
+        self.model = None
+        self.train_data_loader = None
+        self.valid_data_loader = None
+
+        self.criterion = None  # 损失函数
+        self.optimizer = None  # 优化函数
+
+        self.max_epochs = self.trainer_conf["epochs"]
+        self.ckpt_path = self.trainer_conf["ckpt_path"]
+        self.max_ckpt_save = self.trainer_conf["max_ckpt_save"]
+
+        self.epoch = -1
+
+        self.log_every_steps = self.trainer_conf["log_every_steps"]  # 每多少个step展示一次日志
 
         self.name = name + "-" if len(name) > 0 else ""
 
@@ -31,21 +55,21 @@ class BaseExecutor:
         with open(log_file, mode, encoding='utf-8') as w1:
             w1.write(logs + "\n")
 
-    def save_ckpt(self, model, epoch):
+    def save_ckpt(self):
         """ 存储ckpt，并定期删除多余的； """
         # 模型权重存储在这里
-        model_path = os.path.join(self.ckpt_path, self.name + 'model_epoch-{:04d}.pth'.format(epoch))
+        model_path = os.path.join(self.ckpt_path, self.name + 'model_epoch-{:04d}.pth'.format(self.epoch))
         torch.save(
             {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
+                'epoch': self.epoch,
+                'model_state_dict': self.model.state_dict(),
             }, model_path
         )
         # 优化器参数存储在这里
-        states_path = os.path.join(self.ckpt_path, self.name + 'states_epoch-{:04d}.pth'.format(epoch))
+        states_path = os.path.join(self.ckpt_path, self.name + 'states_epoch-{:04d}.pth'.format(self.epoch))
         torch.save(
             {
-                'epoch': epoch,
+                'epoch': self.epoch,
                 'optimizer_state_dict': self.optimizer.state_dict(),
             }, states_path
         )
@@ -82,7 +106,7 @@ class BaseExecutor:
                 else:
                     print(f"Skip deleting non-existing file: {full_path}")
 
-    def load_ckpt_auto(self, model):
+    def load_ckpt_auto(self):
         """训练开始之前，找找有没有最近的ckpt，自动加载；"""
         os.makedirs(self.ckpt_path, exist_ok=True)
 
@@ -107,21 +131,21 @@ class BaseExecutor:
 
             last_epoch = int(ckpt_dict["epoch"])
             self.optimizer.load_state_dict(stat_dict['optimizer_state_dict'])
-            model.load_state_dict(ckpt_dict["model_state_dict"])
+            self.model.load_state_dict(ckpt_dict["model_state_dict"])
 
             print(f"load ckpt: {os.path.basename(last_ckpt_path)}")
-            return last_epoch, model
+            return last_epoch, self.model
 
         else:
             return -1, None
 
-    def run(self, model, train_data_loader, valid_data_loader):
+    def run(self):
 
         # 尝试加载预训练模型
         last_epoch = -1
-        last_epoch_may, model_may = self.load_ckpt_auto(model)
+        last_epoch_may, model_may = self.load_ckpt_auto()
         if model_may is not None:
-            model = model_may
+            self.model = model_may
             last_epoch = last_epoch_may
 
         # 写入日志
@@ -130,26 +154,27 @@ class BaseExecutor:
 
         # 正式开始训练
         for epoch in range(last_epoch+1, self.max_epochs):
+            self.epoch = epoch
 
             # 训练一个 epoch
-            train_data_loader.dataset.set_epoch(epoch)
-            self.train_one_epoch(model, train_data_loader, epoch)
+            self.train_data_loader.dataset.set_epoch(self.epoch)
+            self.train_one_epoch()
 
             # save ckpt
-            self.save_ckpt(model, epoch)
+            self.save_ckpt()
 
             # eval
-            valid_data_loader.dataset.set_epoch(epoch)
-            self.valid_one_epoch(model, valid_data_loader, epoch)
+            self.valid_data_loader.dataset.set_epoch(self.epoch)
+            self.valid_one_epoch()
 
-    def train_one_epoch(self, model, data_loader, epoch):
+    def train_one_epoch(self):
         """ 训练一个 epoch；根据任务定义 """
         pass
 
-    def valid_one_epoch(self, model, data_loader, epoch):
+    def valid_one_epoch(self):
         """ 验证一个 epoch；根据任务定义 """
         pass
 
-    def test(self, model, data_loader):
+    def test(self):
         """ 测试；根据任务定义 """
         pass
