@@ -210,15 +210,15 @@ class FastSpeechExecutor(BaseExecutor):
                 = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
 
             # loss
-            f0_loss = self.calculate_1d_loss(f0_gt, f0_predict, "MSE")
-            energy_loss = self.calculate_1d_loss(energy_gt, energy_predict, "MSE")
+            f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
+            energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
 
             duration_gt = torch.log(duration_gt + 1)
-            duration_loss = self.calculate_1d_loss(duration_gt, duration_predict, "MSE")
+            duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
 
             mel_gt = mel_gt.transpose(1, 2)
-            mel_before_loss = self.calculate_2d_loss(mel_gt, mel_before, "MAE")
-            mel_after_loss = self.calculate_2d_loss(mel_gt, mel_after, "MAE")
+            mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
+            mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
 
             total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
 
