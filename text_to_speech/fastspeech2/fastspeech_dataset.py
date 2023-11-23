@@ -129,6 +129,8 @@ class FastSpeechDataList(BaseDataList):
             data['duration'] = duration_frames
             new_data_list.append(data)
 
+        del all_dur_list
+
         self.data_list = new_data_list
         print(f"经过MFA对齐后，语音数据还有：{len(new_data_list)}条。")
         return

@@ -151,7 +151,8 @@ class FastSpeechExecutor(BaseExecutor):
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
                        f"dur_loss = {round(duration_loss.item(), 3)}, "
                        f"mel_before_loss = {round(mel_before_loss.item(), 3)}, "
-                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}.")
+                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}."
+                       f"")
                 print(log)
                 self.write_training_log(log, "a")
 
@@ -171,7 +172,8 @@ class FastSpeechExecutor(BaseExecutor):
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
                f"dur_loss = {round(epoch_dur_loss, 3)}, "
                f"mel_before_loss = {round(epoch_mel_before_loss, 3)}, "
-               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}.\n")
+               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}."
+               f"\n")
         print(log)
         self.write_training_log(log, "a")
 
@@ -242,7 +244,8 @@ class FastSpeechExecutor(BaseExecutor):
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
                        f"dur_loss = {round(duration_loss.item(), 3)}, "
                        f"mel_before_loss = {round(mel_before_loss.item(), 3)}, "
-                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}.")
+                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}."
+                       f"")
                 print(log)
                 self.write_training_log(log, "a")
 
@@ -265,7 +268,8 @@ class FastSpeechExecutor(BaseExecutor):
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
                f"dur_loss = {round(epoch_dur_loss, 3)}, "
                f"mel_before_loss = {round(epoch_mel_before_loss, 3)}, "
-               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}.\n")
+               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}."
+               f"\n")
         print(log)
         self.write_training_log(log, "a")
 

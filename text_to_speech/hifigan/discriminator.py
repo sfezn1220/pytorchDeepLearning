@@ -32,6 +32,7 @@ class HiFiGANPeriodDiscriminator(nn.Module):
                     kernel_size=(kernel_size, 1),
                     stride=(3, 1),
                     padding=(kernel_size // 2, 0),
+                    device=device,
                 )
             )
             self.backbone.append(
@@ -46,6 +47,7 @@ class HiFiGANPeriodDiscriminator(nn.Module):
             kernel_size=(3, 1),
             stride=(3, 1),
             padding=(3 // 2, 0),
+            device=device,
         )
 
     def forward(self, audio):
@@ -132,6 +134,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
                 stride=1,
                 padding=(kernel_sizes[0] * kernel_sizes[1]) // 2,
                 padding_mode="reflect",
+                device=device,
             )
         )
 
@@ -151,6 +154,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
                     stride=down_sample_scale_i,
                     padding=(down_sample_scale_i * 10 + 1) // 2,
                     groups=4,
+                    device=device,
                 )
             )
 
@@ -169,6 +173,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
                 kernel_size=kernel_sizes[0],
                 stride=1,
                 padding=kernel_sizes[0] // 2,
+                device=device,
             )
         )
         self.blocks.append(
@@ -183,6 +188,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
                 kernel_size=kernel_sizes[1],
                 stride=1,
                 padding=kernel_sizes[1] // 2,
+                device=device,
             )
         )
 

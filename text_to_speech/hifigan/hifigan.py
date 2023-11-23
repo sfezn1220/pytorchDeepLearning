@@ -15,21 +15,21 @@ class HiFiGAN(nn.Module):
         assert device in ["cpu", "cuda"]
 
         self.generator = HiFiGANGenerator(conf, device=device)
-        self.multi_period_discriminator = HiFiGANMultiPeriodDiscriminator(conf, device=device)
         self.multi_scale_discriminator = HiFiGANMultiScaleDiscriminator(conf, device=device)
+        self.multi_period_discriminator = HiFiGANMultiPeriodDiscriminator(conf, device=device)
 
-    def forward(self, x):
+    def forward(self, mel):
         """
-        :param x: [batch, channel=80, time]
+        :param mel: [batch, channel=80, time]
         :return tuple(audio, new_audio_list): [batch, channel=1, time] and [[batch, channel=1, new_time1], ...]
         """
         # 生成器
-        audio = self.generator(x)
+        audio_gen = self.generator(mel)
 
         # 判别器
-        discriminator_outputs = self.forward_discriminator(audio)
+        discriminator_outputs = self.forward_discriminator(audio_gen)
 
-        return audio, discriminator_outputs
+        return audio_gen, discriminator_outputs
 
     def forward_discriminator(self, audio):
         """
@@ -37,8 +37,11 @@ class HiFiGAN(nn.Module):
         :return new_audio_list: [[batch, channel=1, new_time1], ...]
         """
         # 判别器
+        if len(audio.shape) == 2:
+            audio = audio.clone().unsqueeze(1)  # [batch, time] -> [batch, channel=1, time]
+
         discriminator_outputs = []
+        discriminator_outputs.extend(self.multi_scale_discriminator(audio))
         discriminator_outputs.extend(self.multi_period_discriminator(audio))
-        discriminator_outputs.extend(self.multi_scale_discriminator(x))
 
         return discriminator_outputs

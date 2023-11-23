@@ -2,7 +2,7 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 20
+batch_size: 20 # 20 for fastspeech2
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+hifi\\demo"
 

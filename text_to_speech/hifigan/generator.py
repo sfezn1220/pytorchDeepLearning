@@ -25,6 +25,7 @@ class HiFiGANGenerator(nn.Module):
             kernel_size=self.kernel_size,
             padding=self.kernel_size // 2,
             padding_mode="reflect",
+            device=device,
         )
 
         # up sample blocks
@@ -69,6 +70,7 @@ class HiFiGANGenerator(nn.Module):
             kernel_size=self.kernel_size,
             padding=self.kernel_size // 2,
             padding_mode="reflect",
+            device=device,
         )
         self.act_final = nn.Tanh()
 
