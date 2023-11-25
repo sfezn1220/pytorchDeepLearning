@@ -144,7 +144,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
 
         in_channel = init_channel
         for i, down_sample_scale_i in enumerate(down_sample_scales):
-            out_channel = max(in_channel * down_sample_scale_i, max_channel)
+            out_channel = min(in_channel * down_sample_scale_i, max_channel)
 
             self.blocks.append(
                 nn.Conv1d(
@@ -165,7 +165,7 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
             )
 
         # final_conv1D_1
-        out_channel = max(in_channel * 2, max_channel)
+        out_channel = min(in_channel * 2, max_channel)
         self.blocks.append(
             nn.Conv1d(
                 in_channels=in_channel,
@@ -198,7 +198,9 @@ class HiFiGANMultiScaleDiscriminator(nn.Module):
         :return new_audio_list: [[batch, channel=1, new_time1], ...]
         """
         outputs = []
+
+        x = audio
         for block in self.blocks:
-            new_audio = block(audio)
-            outputs.append(new_audio)  # 将每一层的结果都收集起来、都输出；
+            x = block(x)
+            outputs.append(x)  # 将每一层的结果都收集起来、都输出；
         return outputs

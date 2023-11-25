@@ -57,6 +57,8 @@ class BaseExecutor:
 
     def save_ckpt(self):
         """ 存储ckpt，并定期删除多余的； """
+        print(f"saving checkpoint of epoch {self.epoch}")
+
         # 模型权重存储在这里
         model_path = os.path.join(self.ckpt_path, self.name + 'model_epoch-{:04d}.pth'.format(self.epoch))
         torch.save(
@@ -78,6 +80,8 @@ class BaseExecutor:
         ckpt_dic = {}
         for file in os.listdir(self.ckpt_path):
             if file.endswith(".log"):
+                continue
+            if not file.startswith(self.name):
                 continue
             epoch = int(file.split(".")[0].split("-")[-1])
             if epoch not in ckpt_dic:

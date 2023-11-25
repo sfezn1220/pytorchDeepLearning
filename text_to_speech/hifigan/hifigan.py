@@ -41,7 +41,7 @@ class HiFiGAN(nn.Module):
             audio = audio.clone().unsqueeze(1)  # [batch, time] -> [batch, channel=1, time]
 
         discriminator_outputs = []
-        discriminator_outputs.extend(self.multi_scale_discriminator(audio))
-        discriminator_outputs.extend(self.multi_period_discriminator(audio))
+        discriminator_outputs.append(self.multi_scale_discriminator(audio))
+        discriminator_outputs.append(self.multi_period_discriminator(audio))
 
         return discriminator_outputs

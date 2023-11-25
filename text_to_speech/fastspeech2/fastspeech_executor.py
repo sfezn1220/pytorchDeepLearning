@@ -274,7 +274,7 @@ class FastSpeechExecutor(BaseExecutor):
         self.write_training_log(log, "a")
 
     def gen_mel_spec(self, dir_name="gen_mel_spec"):
-        """ 训练一个 epoch """
+        """ 合成Mel谱 """
 
         # 尝试加载预训练模型
         last_epoch = -1

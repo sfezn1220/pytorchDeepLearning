@@ -2,7 +2,7 @@
 
 gpu: 0
 lr: 2e-4
-batch_size: 20 # 20 for fastspeech2
+batch_size: 4  # 20 for fastspeech2
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+hifi\\demo"
 
@@ -19,6 +19,9 @@ max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
 
 log_every_steps: 10  # 每多少个step展示一次日志
 
+# HiFiGAN 参数
+start_discriminator_epoch: 100  # 第多少个epoch才开始迭代判别器
+
 # 数据集的操作
 sample_rate: 16000  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
 hop_size: 200  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
@@ -31,7 +34,7 @@ mel_f_min: 0  # Mel谱的频率的最小值
 mel_f_max: 8000  # Mel谱的频率的最大值
 
 shuffle: True
-input_max_seconds: 12  # 输入音频的最大长度/秒，默认是 12秒
+input_max_seconds: 8  # 输入音频的最大长度/秒，默认是 12秒
 input_max_tokens: 196  # 输入音素的最大长度/个，默认是 256个字符
 
 phonemes_size: 213  # 音素的数量
