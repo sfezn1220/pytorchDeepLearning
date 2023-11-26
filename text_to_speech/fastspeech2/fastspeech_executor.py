@@ -22,6 +22,9 @@ class FastSpeechExecutor(BaseExecutor):
     def __init__(self, conf_file: str, name: str = "fastspeech2"):
         super().__init__(conf_file, name)
 
+        # 设置 batch_size
+        self.trainer_conf["batch_size"] = self.trainer_conf["batch_size_fastspeech2"]
+
         # 读取 configs.yaml
         train_data_conf = copy.deepcopy(self.trainer_conf)
         valid_data_conf = copy.deepcopy(self.trainer_conf)
@@ -31,10 +34,14 @@ class FastSpeechExecutor(BaseExecutor):
         self.train_data_loader = get_tts_dataloader(
             data_path=train_data_conf["train_data"],
             data_conf=train_data_conf,
+            model_type="acoustic model",
+            data_type="train",
         )
         self.valid_data_loader = get_tts_dataloader(
             data_path=valid_data_conf["valid_data"],
             data_conf=valid_data_conf,
+            model_type="acoustic model",
+            data_type="valid",
         )
 
         # 模型
@@ -43,6 +50,15 @@ class FastSpeechExecutor(BaseExecutor):
 
         # 优化器
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.trainer_conf["lr"]))
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.max_steps,
+            eta_min=float(self.trainer_conf['final_lr']),
+            last_epoch=-1,
+        )
+
+        # 合成的Mel谱的路径
+        self.gen_audios_dir_name = self.name + "predict_epoch"
 
     def save_mel_images(self, mel_gt, mel_before, mel_after, epoch, uttids):
         """ 保存 Mel谱的图片，用于对比； """
@@ -55,7 +71,7 @@ class FastSpeechExecutor(BaseExecutor):
         uttids = uttids  # [batch, ]
 
         # Mel谱保存在这里
-        save_dir = os.path.join(self.ckpt_path, self.name + 'predict_epoch-{:04d}'.format(epoch))
+        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(epoch))
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -89,19 +105,22 @@ class FastSpeechExecutor(BaseExecutor):
 
         self.model.train()
         flag = "train"
+        data_loader = self.train_data_loader
 
-        epoch_total_loss = 0.0
-        epoch_f0_loss = 0.0
-        epoch_energy_loss = 0.0
-        epoch_dur_loss = 0.0
-        epoch_mel_before_loss = 0.0
-        epoch_mel_after_loss = 0.0
+        epoch_total_loss = torch.tensor([0.0]).to(self.device)
+        epoch_f0_loss = torch.tensor([0.0]).to(self.device)
+        epoch_energy_loss = torch.tensor([0.0]).to(self.device)
+        epoch_dur_loss = torch.tensor([0.0]).to(self.device)
+        epoch_mel_before_loss = torch.tensor([0.0]).to(self.device)
+        epoch_mel_after_loss = torch.tensor([0.0]).to(self.device)
 
-        batch_per_epoch = len(self.train_data_loader)
+        batch_per_epoch = len(data_loader)
         log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
         st = time.time()
-        for batch_idx, batch in enumerate(self.train_data_loader):
+        for batch_idx, batch in enumerate(data_loader):
+
+            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
 
             uttids = batch["uttid"]
             phoneme_ids = batch["phoneme_ids"].to(self.device)
@@ -136,6 +155,9 @@ class FastSpeechExecutor(BaseExecutor):
             self.optimizer.step()
             self.optimizer.zero_grad()
 
+            # end of step
+            self.lr_scheduler.step()
+
             epoch_total_loss += total_loss.item()
             epoch_f0_loss += f0_loss.item()
             epoch_energy_loss += energy_loss.item()
@@ -143,9 +165,18 @@ class FastSpeechExecutor(BaseExecutor):
             epoch_mel_before_loss += mel_before_loss.item()
             epoch_mel_after_loss += mel_after_loss.item()
 
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_f0_loss", f0_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_energy_loss", energy_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_duration_loss", duration_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_before_loss", mel_before_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_after_loss", mel_after_loss.item(), global_steps)
+
+            self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+                                               global_step=global_steps)
             # 展示日志
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"f0_loss = {round(f0_loss.item(), 3)}, "
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
@@ -166,7 +197,7 @@ class FastSpeechExecutor(BaseExecutor):
         et = time.time()
         log = (f"{flag} epoch end, {round((et - st)/60, 2)} minutes,"
                f"\n"
-               f"epoch[{self.epoch}]: "
+               f"epoch[{self.cur_epoch}]: "
                f"total_loss = {round(epoch_total_loss, 3)}, "
                f"f0_loss = {round(epoch_f0_loss, 3)}, "
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
@@ -182,19 +213,22 @@ class FastSpeechExecutor(BaseExecutor):
 
         self.model.eval()
         flag = "valid"
+        data_loader = self.train_data_loader
 
-        epoch_total_loss = 0.0
-        epoch_f0_loss = 0.0
-        epoch_energy_loss = 0.0
-        epoch_dur_loss = 0.0
-        epoch_mel_before_loss = 0.0
-        epoch_mel_after_loss = 0.0
+        epoch_total_loss = torch.tensor([0.0]).to(self.device)
+        epoch_f0_loss = torch.tensor([0.0]).to(self.device)
+        epoch_energy_loss = torch.tensor([0.0]).to(self.device)
+        epoch_dur_loss = torch.tensor([0.0]).to(self.device)
+        epoch_mel_before_loss = torch.tensor([0.0]).to(self.device)
+        epoch_mel_after_loss = torch.tensor([0.0]).to(self.device)
 
-        batch_per_epoch = len(self.valid_data_loader)
+        batch_per_epoch = len(data_loader)
         log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
         st = time.time()
-        for batch_idx, batch in enumerate(self.valid_data_loader):
+        for batch_idx, batch in enumerate(data_loader):
+
+            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
 
             uttids = batch["uttid"]
             phoneme_ids = batch["phoneme_ids"].to(self.device)
@@ -229,6 +263,9 @@ class FastSpeechExecutor(BaseExecutor):
             # self.optimizer.step()
             # self.optimizer.zero_grad()
 
+            # end of step
+            # self.lr_scheduler.step()
+
             epoch_total_loss += total_loss.item()
             epoch_f0_loss += f0_loss.item()
             epoch_energy_loss += energy_loss.item()
@@ -236,9 +273,18 @@ class FastSpeechExecutor(BaseExecutor):
             epoch_mel_before_loss += mel_before_loss.item()
             epoch_mel_after_loss += mel_after_loss.item()
 
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_f0_loss", f0_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_energy_loss", energy_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_duration_loss", duration_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_before_loss", mel_before_loss.item(), global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_after_loss", mel_after_loss.item(), global_steps)
+
+            # self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+            #                                    global_step=global_steps)
             # 展示日志
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"f0_loss = {round(f0_loss.item(), 3)}, "
                        f"energy_loss = {round(energy_loss.item(), 3)}, "
@@ -249,9 +295,6 @@ class FastSpeechExecutor(BaseExecutor):
                 print(log)
                 self.write_training_log(log, "a")
 
-                # 保存验证集的 Mel谱，用于对比；不用存太多；
-                self.save_mel_images(mel_gt, mel_before, mel_after, self.epoch, uttids)
-
         # end of epoch
         epoch_total_loss /= batch_per_epoch
         epoch_f0_loss /= batch_per_epoch
@@ -260,9 +303,9 @@ class FastSpeechExecutor(BaseExecutor):
         epoch_mel_before_loss /= batch_per_epoch
         epoch_mel_after_loss /= batch_per_epoch
         et = time.time()
-        log = (f"{flag} epoch end, {round((et - st)/60, 2)} minutes,"
+        log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
                f"\n"
-               f"epoch[{self.epoch}]: "
+               f"epoch[{self.cur_epoch}]: "
                f"total_loss = {round(epoch_total_loss, 3)}, "
                f"f0_loss = {round(epoch_f0_loss, 3)}, "
                f"energy_loss = {round(epoch_energy_loss, 3)}, "
@@ -273,15 +316,13 @@ class FastSpeechExecutor(BaseExecutor):
         print(log)
         self.write_training_log(log, "a")
 
-    def gen_mel_spec(self, dir_name="gen_mel_spec"):
+    def gen_mel_spec(self, dir_name="gen_mel_spec"):  # TODO 检查下这段代码的逻辑、规范化存储路径
         """ 合成Mel谱 """
 
         # 尝试加载预训练模型
-        last_epoch = -1
-        last_epoch_may, model_may = self.load_ckpt_auto()
-        if model_may is not None:
-            self.model = model_may
-            last_epoch = last_epoch_may
+        last_epoch = self.load_ckpt_auto()
+        if last_epoch < 0:
+            raise ValueError(f"No checkpoint found.")
 
         # Mel谱的存储位置：
         mel_save_dir = os.path.join(self.ckpt_path, dir_name + '-epoch-{:04d}'.format(last_epoch))

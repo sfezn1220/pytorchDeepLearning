@@ -39,6 +39,7 @@ pip install pyloudnorm jieba pyyaml sox
 pip install pypinyin
 pip install imageio
 pip install textgrid
+pip install tensorboard tensorboardX
 ```
 
 ---

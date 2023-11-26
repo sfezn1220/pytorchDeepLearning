@@ -18,7 +18,7 @@ class HiFiGANPeriodDiscriminator(nn.Module):
         assert device in ["cpu", "cuda"]
 
         self.period = period  # 2, 3, 5, 7 or 11
-        print(f"period = {period}")
+        # print(f"period = {period}")
 
         # multi-conv2D
         self.backbone = nn.Sequential()

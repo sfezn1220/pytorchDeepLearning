@@ -1,10 +1,13 @@
 # TTS 训练参数
 
 gpu: 0
+batch_size_fastspeech2: 20  # for fastspeech2, max 20
+batch_size_hifigan: 4  # for hifi-gan, max 4
+
 lr: 2e-4
-batch_size: 4  # 20 for fastspeech2
+final_lr: 1e-5
 epochs: 500
-ckpt_path: "F:\\models_tts_fs+hifi\\demo"
+ckpt_path: "F:\\models_tts_fs+hifi\\base-1"
 
 train_data: "G:\\tts_train_data\\20231114_16K_Yuanshen34+Aishell3select60\\4.jiaba_cut_16K_version-2.0_label+aishell3-selected-version-1.3.train.txt"
 valid_data: "G:\\tts_train_data\\20231114_16K_Yuanshen34+Aishell3select60\\4.jiaba_cut_16K_version-2.0_label+aishell3-selected-version-1.3.test.txt"
@@ -20,6 +23,7 @@ max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
 log_every_steps: 10  # 每多少个step展示一次日志
 
 # HiFiGAN 参数
+pretrain_hifigan_file: "F:\\models_tts_fs+hifi\\demo\\hifigan-model_epoch-0035.pth"  # 预训练模型
 start_discriminator_epoch: 100  # 第多少个epoch才开始迭代判别器
 
 # 数据集的操作

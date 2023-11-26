@@ -17,14 +17,16 @@ from text_to_speech.utils.gen_feature import AudioFeatureExtractor
 
 
 class FastSpeechDataList(BaseDataList):
-    def __init__(self, data_list_file: str, conf: Dict):
+    def __init__(self, data_list_file: str, conf: Dict, model_type: str = "acoustic model", data_type: str = "train"):
         """
         定义数据集：输入数据数据的格式；
         :param data_list_file: 训练集/验证集的label文件路径；
         :param conf: 数据集的参数；
+        :param model_type: 用于声学模型 or 声码器：["acoustic model", "vocoder"]
+        :param data_type: ["train", "valid"]
         :return:
         """
-        super().__init__(conf)
+        super().__init__(conf, data_type)
 
         self.sample_rate = conf['sample_rate']  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
         self.hop_size = conf['hop_size']  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
@@ -46,8 +48,12 @@ class FastSpeechDataList(BaseDataList):
         self.initial_maps(conf['spk_map'], conf['phoneme_map'])  # 初始化：spk_map、phoneme_amp
         self.mfa_dir = conf['mfa_dir']  # MFA对齐结果
 
+        assert model_type.lower() in ["acoustic model", "vocoder"]
+        self.model_type = model_type.lower()  # 声学模型 or 声码器
+
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
-        self.get_mfa_results()  # 读取duration信息
+        if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
+            self.get_mfa_results()  # 读取duration信息
 
     def initial_maps(self, spk_map_file: str, phoneme_map_file: str, split_symbol: str = " "):
         """初始化： spk_map、phoneme_map；"""
@@ -211,17 +217,23 @@ def get_tts_dataloader(
         data_path: str,
         data_conf: dict,
         num_workers: int = 0,
+        model_type: str = "acoustic model",
+        data_type: str = "train",
 ):
     """
     生成 train_dataloader、valid_dataloader、test_dataloader；
     :param data_path: label文件路径；
     :param data_conf: 数据集的参数；
     :param num_workers: 默认为 0；
+    :param model_type: 用于声学模型 or 声码器：["acoustic model", "vocoder"]
+    :param data_type: ["train", "valid"]
     :return:
     """
     dataset = FastSpeechDataList(
         data_list_file=data_path,
         conf=data_conf,
+        model_type=model_type,
+        data_type=data_type,
     )
     data_loader = DataLoader(
         dataset,
@@ -229,7 +241,7 @@ def get_tts_dataloader(
         num_workers=num_workers,
     )
 
-    print(f"steps_per_epoch = {len(data_loader)}")
+    print(f"{data_type} steps_per_epoch = {len(data_loader)}")
 
     return data_loader
 

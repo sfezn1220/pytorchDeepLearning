@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import time
 import tqdm
+import soundfile as sf
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -26,23 +27,35 @@ class HiFiGANExecutor(BaseExecutor):
         print(f"self.device = {self.device}")
         print(f"self.name = {self.name}")
 
+        # 设置 batch_size
+        self.trainer_conf["batch_size"] = self.trainer_conf["batch_size_hifigan"]
+
         # 读取 configs.yaml
         train_data_conf = copy.deepcopy(self.trainer_conf)
         valid_data_conf = copy.deepcopy(self.trainer_conf)
         # valid_data_conf['shuffle'] = False
 
+        self.sample_rate = train_data_conf['sample_rate']
+
         # 数据集：
         self.train_data_loader = get_tts_dataloader(
             data_path=train_data_conf["train_data"],
             data_conf=train_data_conf,
+            model_type="vocoder",
+            data_type="train",
         )
         self.valid_data_loader = get_tts_dataloader(
             data_path=valid_data_conf["valid_data"],
             data_conf=valid_data_conf,
+            model_type="vocoder",
+            data_type="valid",
         )
+
+        self.max_steps = self.max_epochs * len(self.train_data_loader)
 
         # 模型
         self.model = HiFiGAN(self.trainer_conf, device=self.device).to(self.device)
+        self.pretrain_hifigan_file = self.trainer_conf["pretrain_hifigan_file"]
         # print(model)
 
         # 第多少个epoch才开始迭代判别器
@@ -50,12 +63,39 @@ class HiFiGANExecutor(BaseExecutor):
 
         # 优化器
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=float(self.trainer_conf["lr"]))
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=self.max_steps,
+            eta_min=float(self.trainer_conf['final_lr']),
+            last_epoch=-1,
+        )
 
         # stft loss
         self.stft_loss = MultiSTFTLoss()
 
-    def run(self):
-        super().run()
+        # 合成的语音数据的路径
+        self.gen_audios_dir_name = self.name + "predict_epoch"
+
+    def save_gen_audios(self, audio_gen, epoch, uttids):
+        """ 保存合成音频； """
+        if len(audio_gen.shape) == 3:
+            audio_gen = audio_gen.clone().squeeze(1)  # [batch, 1, time] -> [batch, time]
+
+        audio_gen = audio_gen.detach().cpu().numpy()
+
+        # 合成语音保存在这里
+        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(epoch))
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+
+        for audio_gen_i, uttids_i in zip(audio_gen, uttids):
+            sf.write(
+                file=os.path.join(save_dir, str(uttids_i) + ".wav"),
+                data=audio_gen_i,
+                samplerate=self.sample_rate,
+            )
+
+        return
 
     def cal_loss(self, audio_gt, audio_gen, features_gt, features_gen):
         """ 计算 HiFiGAN 的损失函数； """
@@ -68,7 +108,7 @@ class HiFiGANExecutor(BaseExecutor):
         fake_loss = torch.tensor([0.0]).to(self.device)
 
         # 最开始不更新判别器，后面再更新；
-        if self.epoch >= self.start_discriminator_epoch:
+        if self.cur_epoch >= self.start_discriminator_epoch:
             # adv_loss of generator
             cnt = 0
             for i in range(len(features_gen)):
@@ -118,6 +158,9 @@ class HiFiGANExecutor(BaseExecutor):
 
         return total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss
 
+    def run(self):
+        super().run()
+
     def train_one_epoch(self):
         """ 训练一个 epoch """
 
@@ -139,6 +182,8 @@ class HiFiGANExecutor(BaseExecutor):
         st = time.time()
         for batch_idx, batch in enumerate(data_loader):
 
+            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
+
             uttids = batch["uttid"]
             spk_id = batch["spk_id"].to(self.device)
             mel_gt = batch["mel"].to(self.device)
@@ -158,6 +203,9 @@ class HiFiGANExecutor(BaseExecutor):
             self.optimizer.step()
             self.optimizer.zero_grad()
 
+            # end of step
+            self.lr_scheduler.step()
+
             epoch_total_loss += total_loss.item()
             epoch_sc_loss += sc_loss.item()
             epoch_mag_loss += mag_loss.item()
@@ -166,9 +214,20 @@ class HiFiGANExecutor(BaseExecutor):
             epoch_real_loss += real_loss.item()
             epoch_fake_loss += fake_loss.item()
 
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_sc_loss", sc_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mag_loss", mag_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_adv_loss", adv_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fm_loss", fm_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_real_loss", real_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fake_loss", fake_loss.item(), global_step=global_steps)
+
+            self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+                                               global_step=global_steps)
+
             # 展示日志
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"sc_loss = {round(sc_loss.item(), 3)}, "
                        f"mag_loss = {round(mag_loss.item(), 3)}, "
@@ -182,17 +241,23 @@ class HiFiGANExecutor(BaseExecutor):
 
         # end of epoch
         epoch_total_loss /= batch_per_epoch
+        epoch_sc_loss /= batch_per_epoch
+        epoch_mag_loss /= batch_per_epoch
+        epoch_adv_loss /= batch_per_epoch
+        epoch_fm_loss /= batch_per_epoch
+        epoch_real_loss /= batch_per_epoch
+        epoch_fake_loss /= batch_per_epoch
         et = time.time()
         log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
                f"\n"
-               f"epoch[{self.epoch}]: "
+               f"epoch[{self.cur_epoch}]: "
                f"total_loss = {round(epoch_total_loss.item(), 3)}, "
-               f"sc_loss = {round(sc_loss.item(), 3)}, "
-               f"mag_loss = {round(mag_loss.item(), 3)}, "        
-               f"adv_loss = {round(adv_loss.item(), 3)}, "
-               f"fm_loss = {round(fm_loss.item(), 3)}, "
-               f"real_loss = {round(real_loss.item(), 3)}, "
-               f"fake_loss = {round(fake_loss.item(), 3)}, "
+               f"sc_loss = {round(epoch_sc_loss.item(), 3)}, "
+               f"mag_loss = {round(epoch_mag_loss.item(), 3)}, "        
+               f"adv_loss = {round(epoch_adv_loss.item(), 3)}, "
+               f"fm_loss = {round(epoch_fm_loss.item(), 3)}, "
+               f"real_loss = {round(epoch_real_loss.item(), 3)}, "
+               f"fake_loss = {round(epoch_fake_loss.item(), 3)}, "
                f"\n")
         print(log)
         self.write_training_log(log, "a")
@@ -218,6 +283,8 @@ class HiFiGANExecutor(BaseExecutor):
         st = time.time()
         for batch_idx, batch in enumerate(data_loader):
 
+            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
+
             uttids = batch["uttid"]
             spk_id = batch["spk_id"].to(self.device)
             mel_gt = batch["mel"].to(self.device)
@@ -237,6 +304,9 @@ class HiFiGANExecutor(BaseExecutor):
             # self.optimizer.step()
             # self.optimizer.zero_grad()
 
+            # end of step
+            # self.lr_scheduler.step()
+
             epoch_total_loss += total_loss.item()
             epoch_sc_loss += sc_loss.item()
             epoch_mag_loss += mag_loss.item()
@@ -245,9 +315,20 @@ class HiFiGANExecutor(BaseExecutor):
             epoch_real_loss += real_loss.item()
             epoch_fake_loss += fake_loss.item()
 
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_sc_loss", sc_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mag_loss", mag_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_adv_loss", adv_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fm_loss", fm_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_real_loss", real_loss.item(), global_step=global_steps)
+            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fake_loss", fake_loss.item(), global_step=global_steps)
+
+            # self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+            #                                    global_step=global_steps)
+
             # 展示日志
             if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
                        f"total_loss = {round(total_loss.item(), 3)}, "
                        f"sc_loss = {round(sc_loss.item(), 3)}, "
                        f"mag_loss = {round(mag_loss.item(), 3)}, "
@@ -261,17 +342,23 @@ class HiFiGANExecutor(BaseExecutor):
 
         # end of epoch
         epoch_total_loss /= batch_per_epoch
+        epoch_sc_loss /= batch_per_epoch
+        epoch_mag_loss /= batch_per_epoch
+        epoch_adv_loss /= batch_per_epoch
+        epoch_fm_loss /= batch_per_epoch
+        epoch_real_loss /= batch_per_epoch
+        epoch_fake_loss /= batch_per_epoch
         et = time.time()
         log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
                f"\n"
-               f"epoch[{self.epoch}]: "
+               f"epoch[{self.cur_epoch}]: "
                f"total_loss = {round(epoch_total_loss.item(), 3)}, "
-               f"sc_loss = {round(sc_loss.item(), 3)}, "
-               f"mag_loss = {round(mag_loss.item(), 3)}, "        
-               f"adv_loss = {round(adv_loss.item(), 3)}, "
-               f"fm_loss = {round(fm_loss.item(), 3)}, "
-               f"real_loss = {round(real_loss.item(), 3)}, "
-               f"fake_loss = {round(fake_loss.item(), 3)}, "
+               f"sc_loss = {round(epoch_sc_loss.item(), 3)}, "
+               f"mag_loss = {round(epoch_mag_loss.item(), 3)}, "        
+               f"adv_loss = {round(epoch_adv_loss.item(), 3)}, "
+               f"fm_loss = {round(epoch_fm_loss.item(), 3)}, "
+               f"real_loss = {round(epoch_real_loss.item(), 3)}, "
+               f"fake_loss = {round(epoch_fake_loss.item(), 3)}, "
                f"\n")
         print(log)
         self.write_training_log(log, "a")
