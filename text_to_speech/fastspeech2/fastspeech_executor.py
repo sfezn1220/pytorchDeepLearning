@@ -22,6 +22,9 @@ class FastSpeechExecutor(BaseExecutor):
     def __init__(self, conf_file: str, name: str = "fastspeech2"):
         super().__init__(conf_file, name)
 
+        print(f"self.device = {self.device}")
+        print(f"self.name = {self.name}")
+
         # 设置 batch_size
         self.trainer_conf["batch_size"] = self.trainer_conf["batch_size_fastspeech2"]
 
@@ -44,8 +47,11 @@ class FastSpeechExecutor(BaseExecutor):
             data_type="valid",
         )
 
+        self.max_steps = self.max_epochs * len(self.train_data_loader)
+
         # 模型
         self.model = FastSpeech2(self.trainer_conf).to(self.device)
+        self.pretrain_file = self.trainer_conf["pretrain_fastspeech2_file"]
         # print(model)
 
         # 优化器
@@ -198,12 +204,12 @@ class FastSpeechExecutor(BaseExecutor):
         log = (f"{flag} epoch end, {round((et - st)/60, 2)} minutes,"
                f"\n"
                f"epoch[{self.cur_epoch}]: "
-               f"total_loss = {round(epoch_total_loss, 3)}, "
-               f"f0_loss = {round(epoch_f0_loss, 3)}, "
-               f"energy_loss = {round(epoch_energy_loss, 3)}, "
-               f"dur_loss = {round(epoch_dur_loss, 3)}, "
-               f"mel_before_loss = {round(epoch_mel_before_loss, 3)}, "
-               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}."
+               f"total_loss = {round(epoch_total_loss.item(), 3)}, "
+               f"f0_loss = {round(epoch_f0_loss.item(), 3)}, "
+               f"energy_loss = {round(epoch_energy_loss.item(), 3)}, "
+               f"dur_loss = {round(epoch_dur_loss.item(), 3)}, "
+               f"mel_before_loss = {round(epoch_mel_before_loss.item(), 3)}, "
+               f"mel_after_loss = {round(epoch_mel_after_loss.item(), 3)}."
                f"\n")
         print(log)
         self.write_training_log(log, "a")
@@ -306,12 +312,12 @@ class FastSpeechExecutor(BaseExecutor):
         log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
                f"\n"
                f"epoch[{self.cur_epoch}]: "
-               f"total_loss = {round(epoch_total_loss, 3)}, "
-               f"f0_loss = {round(epoch_f0_loss, 3)}, "
-               f"energy_loss = {round(epoch_energy_loss, 3)}, "
-               f"dur_loss = {round(epoch_dur_loss, 3)}, "
-               f"mel_before_loss = {round(epoch_mel_before_loss, 3)}, "
-               f"mel_after_loss = {round(epoch_mel_after_loss, 3)}."
+               f"total_loss = {round(epoch_total_loss.item(), 3)}, "
+               f"f0_loss = {round(epoch_f0_loss.item(), 3)}, "
+               f"energy_loss = {round(epoch_energy_loss.item(), 3)}, "
+               f"dur_loss = {round(epoch_dur_loss.item(), 3)}, "
+               f"mel_before_loss = {round(epoch_mel_before_loss.item(), 3)}, "
+               f"mel_after_loss = {round(epoch_mel_after_loss.item(), 3)}."
                f"\n")
         print(log)
         self.write_training_log(log, "a")

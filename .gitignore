@@ -3,3 +3,5 @@
 *MNIST
 
 *.pyc
+
+text_to_speech/examples/Yuanshen/local/urls.py

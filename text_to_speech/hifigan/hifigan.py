@@ -45,3 +45,12 @@ class HiFiGAN(nn.Module):
         discriminator_outputs.append(self.multi_period_discriminator(audio))
 
         return discriminator_outputs
+
+    def inference(self, mel):
+        """
+        :param mel: [batch, channel=80, time]
+        :return audio: [batch, channel=1, time]
+        """
+        # 生成器
+        audio_gen = self.generator(mel)
+        return audio_gen

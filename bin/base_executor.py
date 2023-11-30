@@ -37,7 +37,7 @@ class BaseExecutor:
         self.model = None
         self.train_data_loader = None
         self.valid_data_loader = None
-        self.pretrain_hifigan_file = None
+        self.pretrain_file = None
 
         # 初始化：损失函数、优化函数、学习率计划、tensorboard
         self.criterion = None
@@ -139,14 +139,7 @@ class BaseExecutor:
         """训练开始之前，找找有没有最近的ckpt，自动加载；"""
         os.makedirs(self.ckpt_path, exist_ok=True)
 
-        # 先看看有没有预训练模型：（self.cur_epoch < 0 表示 epoch 0 开始之前）
-        if self.cur_epoch < 0 and os.path.exists(self.pretrain_hifigan_file):
-            model_dict = torch.load(self.pretrain_hifigan_file)
-            self.model.load_state_dict(model_dict["model_state_dict"])
-            print(f"load pretrain: {os.path.basename(self.pretrain_hifigan_file)}")
-            return -1
-
-        # 再尝试找到最近的ckpt
+        # 先尝试找到最近的ckpt
         ckpt_list = []
         for file in os.listdir(self.ckpt_path):
             if not file.startswith(self.model_name_prefix):
@@ -178,6 +171,13 @@ class BaseExecutor:
 
             print(f"load ckpt: {os.path.basename(last_model_path)}")
             return last_epoch
+
+        # 再看看有没有预训练模型：（self.cur_epoch < 0 表示 epoch 0 开始之前）
+        elif os.path.exists(self.pretrain_file):
+            model_dict = torch.load(self.pretrain_file)
+            self.model.load_state_dict(model_dict["model_state_dict"])
+            print(f"load pretrain: {os.path.basename(self.pretrain_file)}")
+            return -1
 
         else:
             return -1

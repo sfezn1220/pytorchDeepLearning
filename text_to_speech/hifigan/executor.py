@@ -55,7 +55,7 @@ class HiFiGANExecutor(BaseExecutor):
 
         # 模型
         self.model = HiFiGAN(self.trainer_conf, device=self.device).to(self.device)
-        self.pretrain_hifigan_file = self.trainer_conf["pretrain_hifigan_file"]
+        self.pretrain_file = self.trainer_conf["pretrain_hifigan_file"]
         # print(model)
 
         # 第多少个epoch才开始迭代判别器
@@ -76,7 +76,7 @@ class HiFiGANExecutor(BaseExecutor):
         # 合成的语音数据的路径
         self.gen_audios_dir_name = self.name + "predict_epoch"
 
-    def save_gen_audios(self, audio_gen, epoch, uttids):
+    def save_gen_audios(self, audio_gen, uttids):
         """ 保存合成音频； """
         if len(audio_gen.shape) == 3:
             audio_gen = audio_gen.clone().squeeze(1)  # [batch, 1, time] -> [batch, time]
@@ -84,7 +84,7 @@ class HiFiGANExecutor(BaseExecutor):
         audio_gen = audio_gen.detach().cpu().numpy()
 
         # 合成语音保存在这里
-        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(epoch))
+        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(self.cur_epoch))
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -325,6 +325,9 @@ class HiFiGANExecutor(BaseExecutor):
 
             # self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
             #                                    global_step=global_steps)
+
+            # 保存：合成谱
+            self.save_gen_audios(audio_gen, uttids)
 
             # 展示日志
             if batch_idx % log_every_steps == 0:

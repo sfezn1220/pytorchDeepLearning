@@ -1,5 +1,7 @@
 """ 定义 FastSpeech2 声学模型；"""
 
+import random
+
 import torch
 import torch.nn as nn
 
@@ -95,8 +97,11 @@ class FastSpeech2(nn.Module):
 
         # Length Regulation
         duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)  # [batch, 1, time]
-        if duration_gt is not None:  # inference
-            duration = duration_gt.int()
+        if duration_gt is not None:
+            r = random.uniform(0.5, 1.0)
+            duration_predict_exp = nn.ReLU()(torch.exp(duration_predict) - 1)
+            duration = r * duration_gt + (1 - r) * duration_predict_exp
+            duration = duration.int()
         else:  # train
             duration = nn.ReLU()(torch.exp(duration_predict) - 1)
             duration = duration.int()
