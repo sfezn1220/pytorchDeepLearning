@@ -118,8 +118,8 @@ def select_spks(ori_label_file, new_label_file, selected_spks):
 if __name__ == "__main__":
     root_dir = "G:\\aishell3"
 
-    start_stage = 1
-    stop_stage = 1
+    start_stage = 2
+    stop_stage = 2
 
     # stage 1: 将原始 aishell3 数据进行重命名
     if start_stage <= 1 and stop_stage >= 1:

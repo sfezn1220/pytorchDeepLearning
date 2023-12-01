@@ -9,22 +9,27 @@ from pypinyin.contrib.tone_convert import to_normal, to_tone, to_initials, to_fi
 
 class TextFrontEnd:
     """处理文本的模块；"""
-    def __init__(self, project_dir: str = "E:\\pytorchDeepLearning\\text_to_speech\\text_precess"):
+    def __init__(
+            self,
+            project_dir: str = "E:\\pytorchDeepLearning\\text_to_speech\\text_precess",
+            phoneme_map_file: str = "",
+    ):
 
         self.initial_jieba(project_dir)  # 加载jieba分词
         self.pinyin_map, self.initial_list, self.final_list = self.initial_pinyin(project_dir)  # 加载拼音、声母、韵母的映射
+        self.phoneme_map = self.initial_phoneme_map(phoneme_map_file)  # 加载音素到ID的映射
 
-        self.Englist_charactor_lower = ['a', 'b', 'c', 'd', 'e', 'f', 'g',
+        self.English_charactor_lower = ['a', 'b', 'c', 'd', 'e', 'f', 'g',
                                         'h', 'i', 'j', 'k', 'l', 'm', 'n',
                                         'o', 'p', 'q', 'r', 's', 't',
                                         'u', 'v', 'w', 'x', 'y', 'z']
 
-        self.Englist_charactor_upper = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
+        self.English_charactor_upper = ['A', 'B', 'C', 'D', 'E', 'F', 'G',
                                         'H', 'I', 'J', 'K', 'L', 'M', 'N',
                                         'O', 'P', 'Q', 'R', 'S', 'T',
                                         'U', 'V', 'W', 'X', 'Y', 'Z']
 
-        self.Englist_charactor_all = self.Englist_charactor_lower + self.Englist_charactor_upper
+        self.English_charactor_all = self.English_charactor_lower + self.English_charactor_upper
 
         # 分词级别的停顿：#1
         self.punctuation_pause1 = [
@@ -132,9 +137,25 @@ class TextFrontEnd:
                                 pinyin_map[si] = [initial_list[j-1], final_list[-1]]
         return pinyin_map, initial_list, final_list
 
+    @staticmethod
+    def initial_phoneme_map(phoneme_map_file, split_symbol=" "):
+        """ 加载：音素到ID的映射 """
+        if len(phoneme_map_file) < 1 or not os.path.exists(phoneme_map_file):
+            return None
+        else:
+            phoneme_map = {}
+            with open(phoneme_map_file, 'r', encoding='utf-8') as r1:
+                for line in r1.readlines():
+                    try:
+                        phoneme, phoneme_id = line.strip().split(split_symbol)
+                    except:
+                        continue
+                    phoneme_map[phoneme] = int(phoneme_id)
+            return phoneme_map
+
     def is_alpha(self, char: str) -> bool:
         """判断一个字符是否是英文字母"""
-        if char in self.Englist_charactor_all:
+        if char in self.English_charactor_all:
             return True
         else:
             return False
@@ -173,7 +194,6 @@ class TextFrontEnd:
                     res += jieba.cut(t)
 
         return res
-
 
     def text2pinyin(self, text, add_pause0=False) -> list:
         """汉字转拼音，默认不加“#0”停顿；"""
@@ -218,6 +238,17 @@ class TextFrontEnd:
                 phoneme.append(final)
 
         return phoneme
+
+    def text2phoneme_ids(self, text, add_pause0=True) -> list[int]:
+        """汉字转音素ID：默认添加“#0”停顿；"""
+        assert isinstance(self.phoneme_map, dict), f"需要加载音素ID的映射文件"
+        phoneme = self.text2phoneme(text, add_pause0=add_pause0)
+
+        phoneme_ids = []
+        for p in phoneme:
+            phoneme_ids.append(self.phoneme_map[p])
+
+        return phoneme_ids
 
     def text_processor(self, input_text) -> tuple[list, list]:
         """文本前端模型：输入文本，输出音素；"""
@@ -296,7 +327,14 @@ class TextFrontEnd:
 
     def save_phoneme_map(self, save_path="./phoneme_map.txt"):
         """制作MFA所需的发音词典"""
-        all_phoneme_list = ["pad", self.pause0, self.pause1, self.pause2, self.pause3, self.start_symbol, self.end_symbol] + self.initial_list
+        all_phoneme_list = [
+            "pad",
+            self.pause0, self.pause1, self.pause2, self.pause3,
+            self.start_symbol, self.end_symbol
+        ]  # 韵律标签
+
+        all_phoneme_list += self.initial_list  # 声母
+
         for p in self.final_list:
             for i in range(5):
                 all_phoneme_list.append(p + str(i+1))  # 韵母 + 声调

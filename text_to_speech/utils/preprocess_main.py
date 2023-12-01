@@ -139,67 +139,71 @@ def check_punctuation(label_file, res_file):
     return
 
 
-def main_jieba_cut(label_file, res_file, spk_map_file="", lexicon_file=""):
+def main_jieba_cut(label_file, res_dir, spk_map_file="", lexicon_file=""):
     """读取 label 文件，进行 jieba 分词"""
     textFrontEnd = TextFrontEnd()  # 文本前端模型
 
+    if isinstance(label_file, str):
+        label_file = [label_file]
+    elif isinstance(label_file, list):
+        pass
+    else:
+        raise ValueError(f"input ori_label_file must be List or Str.")
+
     all_words = []  # 统计所有出现的词语，以生成MFA所需的.lab文件
     if len(lexicon_file) < 1:
-        lexicon_file = os.path.join(os.path.dirname(res_file), "lexicon.txt")
+        lexicon_file = os.path.join(res_dir, "lexicon.txt")
+    if not os.path.exists(res_dir):
+        os.mkdir(res_dir)
 
     all_spk_list = []  # 统计所有音色
     if len(spk_map_file) < 1:
-        spk_map_file = os.path.join(os.path.dirname(res_file), "spk_map.txt")
+        spk_map_file = os.path.join(res_dir, "spk_map.txt")
 
     max_phonemes = 0  # 统计最大的文本长度
 
     min_dur = 1e10
     max_dur = 0.0
     total_dur_sec = 0.0
-    with open(label_file, "r", encoding="utf-8") as r1,\
-            open(res_file, "w", encoding="utf-8") as w1,\
-            open(spk_map_file, "w", encoding="utf-8") as w2,\
+    with open(spk_map_file, "w", encoding="utf-8") as w2,\
             open(lexicon_file, "w", encoding="utf-8") as w3:
-        w1.write(" ".join(["spk", "duration", "text", "pinyin", "path"]) + "\n")
 
-        for i, line in enumerate(r1.readlines()):
-            if line.startswith("spk"):  # 去掉首行
-                continue
+        for label_file_i in label_file:
+            with open(label_file_i, "r", encoding="utf-8") as r1:
 
-            try:
-                spk, dur, ori_text, path = line.strip().split(" ", 3)
-                min_dur = min(min_dur, float(dur))
-                max_dur = max(max_dur, float(dur))
-                total_dur_sec += float(dur)
-            except:
-                print(f"ignore split error line: {line.strip()}")
-                continue
+                all_lines = r1.readlines()
 
-            jieba_word_list, phoneme_list = textFrontEnd.text_processor(ori_text)
-            phoneme_str = ",".join(phoneme_list)
+                for line in tqdm.tqdm(all_lines):
+                    if line.startswith("spk"):  # 去掉首行
+                        continue
 
-            max_phonemes = max(max_phonemes, len(phoneme_list))
+                    try:
+                        spk, dur, ori_text, path = line.strip().split(" ", 3)
+                        min_dur = min(min_dur, float(dur))
+                        max_dur = max(max_dur, float(dur))
+                        total_dur_sec += float(dur)
+                    except:
+                        print(f"ignore split error line: {line.strip()}")
+                        continue
 
-            if spk not in all_spk_list:  # 统计所有说话人、生成 spk_map
-                all_spk_list.append(spk)
+                    jieba_word_list, phoneme_list = textFrontEnd.text_processor(ori_text)
 
-            # w1.write(f"{ori_text}\n")
-            # w1.write(f"{jieba_word_list}\n")
-            # w1.write(f"{phoneme_list}\n")
-            # w1.write(f"\n")
-            w1.write(" ".join([spk, dur, ori_text, phoneme_str, path]) + "\n")
+                    max_phonemes = max(max_phonemes, len(phoneme_list))
 
-            with open(str(path).replace(".wav", ".lab"), "w", encoding="utf-8") as w_lab:
-                for j, [word, phonemes] in enumerate(jieba_word_list):
-                    if j != 0:
-                        w_lab.write(" ")
-                    w_lab.write(word)
+                    if spk not in all_spk_list:  # 统计所有说话人、生成 spk_map
+                        all_spk_list.append(spk)
 
-            for word, phonemes in jieba_word_list:  # 统计所有词语
-                if len(phonemes) > 1 and [word, phonemes] not in all_words:
-                    all_words.append([word, phonemes])
+                    with open(str(path).replace(".wav", ".lab"), "w", encoding="utf-8") as w_lab:
+                        for j, [word, phonemes] in enumerate(jieba_word_list):
+                            if j != 0:
+                                w_lab.write(" ")
+                            w_lab.write(word)
 
-            print(f"read {i+1} line data...", end="\r", flush=True)
+                    for word, phonemes in jieba_word_list:  # 统计所有词语
+                        if len(phonemes) > 1 and [word, phonemes] not in all_words:
+                            all_words.append([word, phonemes])
+
+                    # print(f"read {i+1} line data...", end="\r", flush=True)
 
         # 写入 spk_map
         all_spk_list.sort()
@@ -211,7 +215,7 @@ def main_jieba_cut(label_file, res_file, spk_map_file="", lexicon_file=""):
         for word, phonemes in all_words:
             w3.write(" ".join([word, phonemes]) + "\n")
 
-    print(f"totally read {i+1} line data.")
+    print(f"totally read {len(all_lines)} line data.")
 
     print()
     print(f"max_phonemes = {max_phonemes} tokens.")

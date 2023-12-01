@@ -228,6 +228,6 @@ if __name__ == "__main__":
     # stage 3: 分词、生成拼音
     if start_stage <= 3 and stop_stage >= 3:
         main_jieba_cut(
-            label_file=os.path.join(data_dir, "3.Yuanshen_16K_version-2.0_label+aishell3-selected-version-1.3.txt"),
-            res_file=os.path.join(data_dir, "4.jiaba_cut_16K_version-2.0_label+aishell3-selected-version-1.3.txt"),
+            label_file=os.path.join(data_dir, "3.no-loudnorm_16K_version-3.0+aishell3-2.0_label.txt"),
+            res_file=os.path.join(data_dir),
         )
