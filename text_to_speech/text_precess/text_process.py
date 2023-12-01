@@ -215,7 +215,7 @@ class TextFrontEnd:
             return new_pinyin
 
     def text2phoneme(self, text, add_pause0=False) -> list:
-        """汉字转音素：声母 + 韵母和声调；默认不加“#0”停顿；"""
+        """汉字转音素：声母 + 韵母和声调；默认不加“#0”停顿；但不处理标点；"""
         pinyin = self.text2pinyin(text, add_pause0=add_pause0)
 
         phoneme = []
@@ -242,10 +242,11 @@ class TextFrontEnd:
     def text2phoneme_ids(self, text, add_pause0=True) -> list[int]:
         """汉字转音素ID：默认添加“#0”停顿；"""
         assert isinstance(self.phoneme_map, dict), f"需要加载音素ID的映射文件"
-        phoneme = self.text2phoneme(text, add_pause0=add_pause0)
+        _, phoneme = self.text_processor(text)
 
         phoneme_ids = []
         for p in phoneme:
+            assert p in self.phoneme_map, f"phoneme \"{p}\" not in phoneme_map"
             phoneme_ids.append(self.phoneme_map[p])
 
         return phoneme_ids

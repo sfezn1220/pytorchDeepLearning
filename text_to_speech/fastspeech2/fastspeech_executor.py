@@ -37,13 +37,13 @@ class FastSpeechExecutor(BaseExecutor):
         self.train_data_loader = get_tts_dataloader(
             data_path=train_data_conf["train_data"],
             data_conf=train_data_conf,
-            model_type="acoustic model",
+            model_type="vocoder",
             data_type="train",
         )
         self.valid_data_loader = get_tts_dataloader(
             data_path=valid_data_conf["valid_data"],
             data_conf=valid_data_conf,
-            model_type="acoustic model",
+            model_type="vocoder",
             data_type="valid",
         )
 

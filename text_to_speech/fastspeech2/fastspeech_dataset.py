@@ -15,6 +15,8 @@ from bin.base_dataset import BaseDataList
 from text_to_speech.utils.read_textgrid import read_all_textgrid
 from text_to_speech.utils.gen_feature import AudioFeatureExtractor
 
+from text_to_speech.text_precess import TextFrontEnd  # 文本前端模型
+
 
 class FastSpeechDataList(BaseDataList):
     def __init__(self, data_list_file: str, conf: Dict, model_type: str = "acoustic model", data_type: str = "train"):
@@ -38,6 +40,7 @@ class FastSpeechDataList(BaseDataList):
         self.mel_f_min = conf['mel_f_min']  # Mel谱频率的最小值
         self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
 
+        self.text_processor = TextFrontEnd(phoneme_map_file=conf['phoneme_map'])
         self.feature_extractor = AudioFeatureExtractor(conf)
 
         self.input_max_seconds = conf['input_max_seconds']  # 输入音频的最大长度/秒，默认是 12秒
@@ -45,7 +48,7 @@ class FastSpeechDataList(BaseDataList):
 
         self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 256个字符
 
-        self.initial_maps(conf['spk_map'], conf['phoneme_map'])  # 初始化：spk_map、phoneme_amp
+        self.initial_maps(conf['spk_map'])  # 初始化：spk_map
         self.mfa_dir = conf['mfa_dir']  # MFA对齐结果
 
         assert model_type.lower() in ["acoustic model", "vocoder"]
@@ -55,8 +58,8 @@ class FastSpeechDataList(BaseDataList):
         if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
             self.get_mfa_results()  # 读取duration信息
 
-    def initial_maps(self, spk_map_file: str, phoneme_map_file: str, split_symbol: str = " "):
-        """初始化： spk_map、phoneme_map；"""
+    def initial_maps(self, spk_map_file: str, split_symbol: str = " "):
+        """初始化： spk_map；"""
         self.spk_map = {}
         with open(spk_map_file, 'r', encoding='utf-8') as r1:
             for line in r1.readlines():
@@ -65,15 +68,6 @@ class FastSpeechDataList(BaseDataList):
                 except:
                     continue
                 self.spk_map[spk] = int(spk_id)
-
-        self.phoneme_map = {}
-        with open(phoneme_map_file, 'r', encoding='utf-8') as r1:
-            for line in r1.readlines():
-                try:
-                    phoneme, phoneme_id = line.strip().split(split_symbol)
-                except:
-                    continue
-                self.phoneme_map[phoneme] = int(phoneme_id)
         return
 
     def get_tts_data(self, data_list_file: str):
@@ -100,6 +94,8 @@ class FastSpeechDataList(BaseDataList):
                 data["path"] = path
                 data["uttid"] = os.path.basename(path).replace(".wav", "")
                 data['pinyin'] = pinyin
+
+                data['phoneme_ids'] = self.get_phoneme_ids(text)  # 调用文本前端模型：文本转音素ID
                 data_list.append(data)
         print(f"读取到语音数据：{len(data_list)}条。")
         return data_list
@@ -189,11 +185,9 @@ class FastSpeechDataList(BaseDataList):
 
         return mel, f0, energy, audio, mel_mask, seconds, mel_length, f0_length, energy_length
 
-    def get_phoneme_ids(self, pinyin: str):
-        """音素转音素ID，并padding到统一长度；"""
-        phoneme_ids = []
-        for p in str(pinyin).split(','):
-            phoneme_ids.append(self.phoneme_map[p])
+    def get_phoneme_ids(self, text: str):
+        """ 文本到音素ID，并padding到统一长度；"""
+        phoneme_ids = self.text_processor.text2phoneme_ids(text)  # 文本前端模型：文本 -> 音素ID
         phoneme_ids = torch.tensor(phoneme_ids, dtype=torch.int32)
         # padding
         if len(phoneme_ids) < self.input_max_tokens:
@@ -209,7 +203,6 @@ class FastSpeechDataList(BaseDataList):
         for data in self.data_list:
             (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
              data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
-            data['phoneme_ids'] = self.get_phoneme_ids(data['pinyin'])
             yield data
 
 
