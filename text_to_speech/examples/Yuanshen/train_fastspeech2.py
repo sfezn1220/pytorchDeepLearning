@@ -11,10 +11,13 @@ def main():
     torch.cuda.set_per_process_memory_fraction(0.93, 0)
 
     trainer = FastSpeechExecutor(
-        conf_file=f"./configs/fs+hifi/demo.yaml",
+        # conf_file=f"./configs/fs+hifi/demo.yaml",
+        conf_file=f"./configs/fs+hifi/base-2.yaml",
     )
 
-    trainer.run()
+    # trainer.run()
+
+    trainer.gen_mel_spec()
 
     return
 

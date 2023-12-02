@@ -37,13 +37,13 @@ class FastSpeechExecutor(BaseExecutor):
         self.train_data_loader = get_tts_dataloader(
             data_path=train_data_conf["train_data"],
             data_conf=train_data_conf,
-            model_type="vocoder",
+            model_type="acoustic model",
             data_type="train",
         )
         self.valid_data_loader = get_tts_dataloader(
             data_path=valid_data_conf["valid_data"],
             data_conf=valid_data_conf,
-            model_type="vocoder",
+            model_type="acoustic model",
             data_type="valid",
         )
 
@@ -66,7 +66,7 @@ class FastSpeechExecutor(BaseExecutor):
         # 合成的Mel谱的路径
         self.gen_audios_dir_name = self.name + "predict_epoch"
 
-    def save_mel_images(self, mel_gt, mel_before, mel_after, epoch, uttids):
+    def save_mel_images(self, mel_gt, mel_before, mel_after, uttids):
         """ 保存 Mel谱的图片，用于对比； """
 
         mel_gt = mel_gt[:, :, :mel_after.shape[-1]]
@@ -77,7 +77,7 @@ class FastSpeechExecutor(BaseExecutor):
         uttids = uttids  # [batch, ]
 
         # Mel谱保存在这里
-        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(epoch))
+        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(self.cur_epoch))
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -301,6 +301,8 @@ class FastSpeechExecutor(BaseExecutor):
                 print(log)
                 self.write_training_log(log, "a")
 
+            self.save_mel_images(mel_gt, mel_before, mel_after, uttids)
+
         # end of epoch
         epoch_total_loss /= batch_per_epoch
         epoch_f0_loss /= batch_per_epoch
@@ -358,5 +360,16 @@ class FastSpeechExecutor(BaseExecutor):
             mel_after = mel_after.detach().squeeze(0).cpu().numpy()  # -> [channel=80， time]
 
             for mel_after_i, uttids_i in zip(mel_after, uttids):
+                # 先保存numpy数组
                 mel_save_path = os.path.join(mel_save_dir, str(uttids_i) + ".npy")
                 np.save(file=mel_save_path, arr=mel_after_i)
+
+                # 再保存png图片
+                image_path = os.path.join(mel_save_dir, str(uttids_i) + ".png")
+                fig = plt.figure(figsize=(8, 3))
+                ax1 = fig.add_subplot(111)
+                im = ax1.imshow(np.rot90(mel_after_i), aspect="auto", interpolation="none")
+                fig.colorbar(mappable=im, shrink=0.65, orientation="horizontal", ax=ax1)
+                plt.tight_layout()
+                plt.savefig(image_path)
+                plt.close()

@@ -1,0 +1,52 @@
+# TTS 训练参数
+
+gpu: 0
+batch_size_fastspeech2: 20  # for fastspeech2, max 20
+batch_size_hifigan: 4  # for hifi-gan, max 4
+
+lr: 2e-4
+final_lr: 1e-5
+epochs: 500
+ckpt_path: "F:\\models_tts_fs+hifi\\base-2"
+
+train_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
+valid_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
+test_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
+
+spk_map: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\spk_map.txt"
+phoneme_map: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\phoneme_map.txt"
+
+mfa_dir: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\mfa_align_results"
+
+max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
+
+log_every_steps: 10  # 每多少个step展示一次日志
+
+# FastSpeech2 参数
+# pretrain_fastspeech2_file: "F:\\models_tts_fs+hifi\\demo\\fastspeech2-model_epoch-0181.pth"  # 预训练模型
+pretrain_fastspeech2_file: "-1"  # 预训练模型
+
+# HiFiGAN 参数
+# pretrain_hifigan_file: "F:\\models_tts_fs+hifi\\demo\\hifigan-model_epoch-0035.pth"  # 预训练模型
+pretrain_hifigan_file: "-1"  # 预训练模型
+start_discriminator_epoch: 100  # 第多少个epoch才开始迭代判别器
+
+use_syn_mel: True  # 是否使用合成Mel谱
+
+# 数据集的操作
+sample_rate: 16000  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
+hop_size: 200  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
+fft_size: 2048
+win_length: 800  # for 16K Hz
+window: "hann"
+num_mels: 80  # numbers of mels
+
+mel_f_min: 0  # Mel谱的频率的最小值
+mel_f_max: 8000  # Mel谱的频率的最大值
+
+shuffle: True
+input_max_seconds: 8  # 输入音频的最大长度/秒，默认是 12秒
+input_max_tokens: 196  # 输入音素的最大长度/个，默认是 256个字符
+
+phonemes_size: 213  # 音素的数量
+speaker_size: 256  # 音色的数量

@@ -64,7 +64,7 @@ def read_one_textgrid(textgrid_file: str = "", phoneme_list: list = []) -> list[
     return dur_list
 
 
-def read_all_textgrid(textgred_dir: str = "") -> dict:
+def read_all_textgrid(textgred_dir: str = "", uttid_useful_list: list = []) -> dict:
     """读取这个文件夹内的所有textgrid文件；返回字典：key=uttid, value=[[phoneme1, phoneme2, ...], [dur1, dur2, ...]]；"""
 
     uttid2textgrid = {}
@@ -79,6 +79,10 @@ def read_all_textgrid(textgred_dir: str = "") -> dict:
                 continue
             uttid = file.replace(".TextGrid", "")
             full_path = os.path.join(textgred_dir, spk, file)
+
+            # 检查是不是所需要的 uttid
+            if len(uttid_useful_list) > 0 and uttid not in uttid_useful_list:
+                continue
 
             phoneme_dur_list = read_one_textgrid(full_path)  # 读取一条textgrid文件，删除空字符
 

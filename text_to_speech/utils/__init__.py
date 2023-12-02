@@ -13,7 +13,8 @@ from .audio_process import channels_to_mono  # 双声道转单声道；
 from .audio_process import resample          # 重采样；
 from .audio_process import copy_and_rename   # 复制、转换成 wav 格式；
 
-"""处理文本"""
-
 """处理字典"""
 from .dict_process import dic_sort  # 对字典排序、展示
+
+"""处理字符串"""
+from .str2bool import str2bool  # 字符串 转 布尔值

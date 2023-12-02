@@ -1,5 +1,5 @@
 """ 定义：FastSpeech2 语音合成任务的数据集；"""
-
+import copy
 from typing import Dict
 import os
 import numpy as np
@@ -16,6 +16,7 @@ from text_to_speech.utils.read_textgrid import read_all_textgrid
 from text_to_speech.utils.gen_feature import AudioFeatureExtractor
 
 from text_to_speech.text_precess import TextFrontEnd  # 文本前端模型
+from text_to_speech.utils import str2bool  # 字符串转布尔值
 
 
 class FastSpeechDataList(BaseDataList):
@@ -54,6 +55,8 @@ class FastSpeechDataList(BaseDataList):
         assert model_type.lower() in ["acoustic model", "vocoder"]
         self.model_type = model_type.lower()  # 声学模型 or 声码器
 
+        self.use_syn_mel = str2bool(conf['use_syn_mel']) if self.model_type == "vocoder" else False   # 是否使用合成Mel谱
+
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
         if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
             self.get_mfa_results()  # 读取duration信息
@@ -79,29 +82,42 @@ class FastSpeechDataList(BaseDataList):
                 if line.startswith("spk"):
                     continue
                 try:
-                    spk, duration, text, pinyin, path = line.split(' ', 4)
+                    spk, duration, text, path = line.split(' ', 3)
+                    uttid = os.path.basename(path).replace(".wav", "")
                 except:
                     continue
-                if float(duration) >= self.input_max_seconds:
-                    print(f"skip audio with duration {duration}")
-                    continue
-                if len(str(pinyin).split(',')) >= self.input_max_tokens:
-                    print(f"skip audio with {len(str(pinyin).split(','))} phoneme tokens")
+                if float(duration) >= self.input_max_seconds -0.5:
+                    print(f"skip audio with duration {duration}, {uttid}")
                     continue
                 data = {}
                 data["spk"] = spk
                 data["spk_id"] = self.spk_map[spk]
                 data["path"] = path
-                data["uttid"] = os.path.basename(path).replace(".wav", "")
-                data['pinyin'] = pinyin
+                data["uttid"] = uttid
+
+                data["phonemes"] = self.text_processor.text_processor(text)[-1]  # 文本前端模型：文本 -> 音素
 
                 data['phoneme_ids'] = self.get_phoneme_ids(text)  # 调用文本前端模型：文本转音素ID
+
+                data['mel_type'] = "raw"
                 data_list.append(data)
-        print(f"读取到语音数据：{len(data_list)}条。")
+
+                if self.use_syn_mel is True:  # 如果使用合成谱，就复制一份数据；
+                    data_copy = copy.deepcopy(data)
+                    data_copy['mel_type'] = "syn"
+                    data_list.append(data_copy)
+
+        print(f"读取到语音数据：{len(data_list)}条。注意 use_syn_mel is {self.use_syn_mel}.")
         return data_list
 
     def get_mfa_results(self):
         """从MFA对齐结果中，读取duration信息；"""
+        # 先收集uttid：
+        uttid_list = []
+        for data in tqdm.tqdm(self.data_list):
+            uttid = data['uttid']
+            uttid_list.append(uttid)
+
         # 读取MFA对齐结果中的所有的textgrid文件
         all_dur_list = read_all_textgrid(self.mfa_dir)
 
@@ -110,7 +126,7 @@ class FastSpeechDataList(BaseDataList):
         new_data_list = []
         for data in tqdm.tqdm(self.data_list):
             uttid = data['uttid']
-            phonemes = str(data['pinyin']).split(",")
+            phonemes = data["phonemes"]
             if uttid not in all_dur_list:
                 print(f"跳过MFA失败的语音：{uttid}")
                 continue
@@ -203,6 +219,11 @@ class FastSpeechDataList(BaseDataList):
         for data in self.data_list:
             (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
              data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
+
+            if data['mel_type'] == "syn":
+                data['mel'] = self.load_syn_mel(data['uttid'])  # TODO 根据uttid，加载前面合成到的Mel谱
+
+            data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
             yield data
 
 
@@ -241,15 +262,20 @@ def get_tts_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "../examples/Yuanshen/configs/fs+hifi/demo.yaml"
+    conf_file = "../examples/Yuanshen/configs/fs+hifi/base-2.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
-    configs['batch_size'] = 16
+    configs['batch_size'] = 1
     # configs["train_data"] = configs["valid_data"]
 
     # 测试 dataloader 的功能
-    train_data_loader = get_tts_dataloader(data_path=configs["train_data"], data_conf=configs)
+    train_data_loader = get_tts_dataloader(
+            data_path=configs["train_data"],
+            data_conf=configs,
+            model_type="acoustic model",
+            data_type="train",
+        )
 
     # 统计音素的最大长度
     max_phoneme_ids_length = 0
