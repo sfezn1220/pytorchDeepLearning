@@ -75,13 +75,18 @@ class FastSpeech2(nn.Module):
         # post net
         self.post_net = PostNet()
 
-    def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None, mel_length=None, f0_length=None, energy_length=None):
+    def forward(self, phoneme_ids, spk_id, duration_gt=None, f0_gt=None, energy_gt=None,
+                mel_length=None, f0_length=None, energy_length=None, complete_percent: float = 0.5):
         """
         :param phoneme_ids: [batch, time] 输入的音素序列；
         :param spk_id: [batch] 输入的音色ID
         :param duration_gt: [batch, time] 输入的每个音素对应的帧数；
         :param f0_gt: [batch, time] 输入的每帧对应的F0值；
         :param energy_gt: [batch, time] 输入的每帧对应的F0值；
+        :param mel_length: int, Mel谱长度，padding前，仅用于调试；
+        :param f0_length: int, f0长度，padding前，仅用于调试；
+        :param energy_length: int, energy长度，padding前，仅用于调试；
+        :param complete_percent: float，训练steps数量占全部数量的比例，比例越高，生成的duration的权重就越大；
         :return:
         """
 
@@ -98,10 +103,14 @@ class FastSpeech2(nn.Module):
         # Length Regulation
         duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)  # [batch, 1, time]
         if duration_gt is not None:
-            # r = random.uniform(0.5, 1.0)
-            # duration_predict_exp = nn.ReLU()(torch.exp(duration_predict) - 1)
-            # duration = r * duration_gt + (1 - r) * duration_predict_exp
-            duration = duration_gt
+            r = random.uniform(0, complete_percent)
+            # 预测的duration
+            duration_predict_exp = nn.ReLU()(torch.exp(duration_predict) - 1)
+            duration_predict_exp = duration_predict_exp.squeeze(1)
+            # 真实的duration
+            duration_gt = duration_gt
+            # 加到一起
+            duration = (1 - r) * duration_gt + r * duration_predict_exp
             duration = duration.int()
         else:  # train
             duration = nn.ReLU()(torch.exp(duration_predict) - 1)

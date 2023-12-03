@@ -11,7 +11,7 @@ def main():
     torch.cuda.set_per_process_memory_fraction(0.93, 0)
 
     trainer = HiFiGANExecutor(
-        conf_file=f"./configs/fs+hifi/demo.yaml",
+        conf_file=f"./configs/fs+hifi/demo-2.yaml",
     )
 
     trainer.run()

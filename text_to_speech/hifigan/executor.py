@@ -189,8 +189,6 @@ class HiFiGANExecutor(BaseExecutor):
             mel_gt = batch["mel"].to(self.device)
             audio_gt = batch['audio'].to(self.device)
 
-            mel_gt = mel_gt.transpose(1, 2)
-
             # 前向计算
             audio_gen, features_gen = self.model(mel_gt)
             features_gt = self.model.forward_discriminator(audio_gt)
@@ -289,8 +287,6 @@ class HiFiGANExecutor(BaseExecutor):
             spk_id = batch["spk_id"].to(self.device)
             mel_gt = batch["mel"].to(self.device)
             audio_gt = batch['audio'].to(self.device)
-
-            mel_gt = mel_gt.transpose(1, 2)
 
             # 前向计算
             audio_gen, features_gen = self.model(mel_gt)

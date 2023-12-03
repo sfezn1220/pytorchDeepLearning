@@ -15,9 +15,9 @@ def main():
         conf_file=f"./configs/fs+hifi/base-2.yaml",
     )
 
-    # trainer.run()
+    trainer.run()
 
-    trainer.gen_mel_spec()
+    # trainer.gen_mel_spec()
 
     return
 

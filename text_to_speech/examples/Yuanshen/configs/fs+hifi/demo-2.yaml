@@ -7,9 +7,9 @@ batch_size_hifigan: 2  # for hifi-gan, max 4
 lr: 2e-4
 final_lr: 1e-5
 epochs: 500
-ckpt_path: "F:\\models_tts_fs+hifi\\base-2"
+ckpt_path: "F:\\models_tts_fs+hifi\\demo-2"
 
-train_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.train.txt"
+train_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
 valid_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
 test_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
 
@@ -20,7 +20,7 @@ mfa_dir: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudno
 
 max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
 
-log_every_steps: 10  # 每多少个step展示一次日志
+log_every_steps: 1  # 每多少个step展示一次日志
 
 # FastSpeech2 参数
 # pretrain_fastspeech2_file: "F:\\models_tts_fs+hifi\\demo\\fastspeech2-model_epoch-0181.pth"  # 预训练模型

@@ -217,24 +217,20 @@ class BaseExecutor:
 
             # 训练一个 epoch
             self.train_data_loader.dataset.set_epoch(self.cur_epoch)
-            self.train_one_epoch()
+            self.forward_one_epoch(training=True)
 
             # save ckpt
             self.save_ckpt()
 
             # eval
             self.valid_data_loader.dataset.set_epoch(self.cur_epoch)
-            self.valid_one_epoch()
+            self.forward_one_epoch(training=False)
 
             # 保存当前epoch的tensorboard
             self.close_summary_writer()
 
-    def train_one_epoch(self):
-        """ 训练一个 epoch；根据任务定义 """
-        pass
-
-    def valid_one_epoch(self):
-        """ 验证一个 epoch；根据任务定义 """
+    def forward_one_epoch(self, training: bool = True):
+        """ 训练 or 验证一个 epoch；根据任务定义 """
         pass
 
     def test(self):

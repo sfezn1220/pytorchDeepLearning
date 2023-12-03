@@ -5,6 +5,7 @@ import shutil
 import copy
 import torch
 import torch.nn as nn
+from contextlib import nullcontext
 import time
 import tqdm
 import matplotlib.pyplot as plt
@@ -85,7 +86,6 @@ class FastSpeechExecutor(BaseExecutor):
         for mel_gt_i, mel_before_i, mel_after_i, uttids_i in zip(mel_gt, mel_before, mel_after, uttids):
             image_path = os.path.join(save_dir, str(uttids_i) + ".png")
 
-            # TODO 仔细修改下下面的代码：
             fig = plt.figure(figsize=(10, 8))
             ax1 = fig.add_subplot(311)
             ax2 = fig.add_subplot(312)
@@ -106,92 +106,107 @@ class FastSpeechExecutor(BaseExecutor):
     def run(self):
         super().run()
 
-    def train_one_epoch(self):
-        """ 训练一个 epoch """
+    def forward_one_epoch(self, training: bool = True):
+        """ 训练 or 验证一个 epoch；根据任务定义 """
 
-        self.model.train()
-        flag = "train"
-        data_loader = self.train_data_loader
+        if training is True:
+            self.model.train()
+            flag = "train"
+            tag = nullcontext
+            data_loader = self.train_data_loader
+        else:
+            self.model.eval()
+            flag = "valid"
+            tag = torch.no_grad
+            data_loader = self.valid_data_loader
 
-        epoch_total_loss = torch.tensor([0.0]).to(self.device)
-        epoch_f0_loss = torch.tensor([0.0]).to(self.device)
-        epoch_energy_loss = torch.tensor([0.0]).to(self.device)
-        epoch_dur_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mel_before_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mel_after_loss = torch.tensor([0.0]).to(self.device)
+        with tag():
+            epoch_total_loss = torch.tensor([0.0]).to(self.device)
+            epoch_f0_loss = torch.tensor([0.0]).to(self.device)
+            epoch_energy_loss = torch.tensor([0.0]).to(self.device)
+            epoch_dur_loss = torch.tensor([0.0]).to(self.device)
+            epoch_mel_before_loss = torch.tensor([0.0]).to(self.device)
+            epoch_mel_after_loss = torch.tensor([0.0]).to(self.device)
 
-        batch_per_epoch = len(data_loader)
-        log_every_steps = min(batch_per_epoch, self.log_every_steps)
+            batch_per_epoch = len(data_loader)
+            log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
-        st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
+            st = time.time()
+            for batch_idx, batch in enumerate(data_loader):
 
-            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
+                global_steps = self.cur_epoch * batch_per_epoch + batch_idx
 
-            uttids = batch["uttid"]
-            phoneme_ids = batch["phoneme_ids"].to(self.device)
-            spk_id = batch["spk_id"].to(self.device)
-            duration_gt = batch["duration"].to(self.device)
-            mel_gt = batch["mel"].to(self.device)
-            f0_gt = batch["f0"].to(self.device)
-            energy_gt = batch["energy"].to(self.device)
-            mel_length = batch["mel_length"].to(self.device)
-            f0_length = batch["f0_length"].to(self.device)
-            energy_length = batch["energy_length"].to(self.device)
+                uttids = batch["uttid"]
+                phoneme_ids = batch["phoneme_ids"].to(self.device)
+                spk_id = batch["spk_id"].to(self.device)
+                duration_gt = batch["duration"].to(self.device)
+                mel_gt = batch["mel"].to(self.device)
+                f0_gt = batch["f0"].to(self.device)
+                energy_gt = batch["energy"].to(self.device)
+                mel_length = batch["mel_length"].to(self.device)
+                f0_length = batch["f0_length"].to(self.device)
+                energy_length = batch["energy_length"].to(self.device)
 
-            # 前向计算
-            mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
+                # 前向计算
+                mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                    = self.model(
+                    phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length,
+                    global_steps / self.max_steps
+                )
 
-            # loss
-            f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
-            energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
+                # loss
+                f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
+                energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
 
-            duration_gt = torch.log(duration_gt + 1)
-            duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
+                duration_gt = torch.log(duration_gt + 1)
+                duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
 
-            mel_gt = mel_gt.transpose(1, 2)
-            mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
-            mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
+                mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
+                mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
 
-            total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
+                total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
 
-            # 反向传播
-            total_loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+                # 反向传播
+                if training is True:
+                    total_loss.backward()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    # end of step
+                    self.lr_scheduler.step()
 
-            # end of step
-            self.lr_scheduler.step()
+                epoch_total_loss += total_loss.item()
+                epoch_f0_loss += f0_loss.item()
+                epoch_energy_loss += energy_loss.item()
+                epoch_dur_loss += duration_loss.item()
+                epoch_mel_before_loss += mel_before_loss.item()
+                epoch_mel_after_loss += mel_after_loss.item()
 
-            epoch_total_loss += total_loss.item()
-            epoch_f0_loss += f0_loss.item()
-            epoch_energy_loss += energy_loss.item()
-            epoch_dur_loss += duration_loss.item()
-            epoch_mel_before_loss += mel_before_loss.item()
-            epoch_mel_after_loss += mel_after_loss.item()
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_steps)
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_f0_loss", f0_loss.item(), global_steps)
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_energy_loss", energy_loss.item(), global_steps)
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_duration_loss", duration_loss.item(), global_steps)
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_before_loss", mel_before_loss.item(), global_steps)
+                self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_after_loss", mel_after_loss.item(), global_steps)
 
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_f0_loss", f0_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_energy_loss", energy_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_duration_loss", duration_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_before_loss", mel_before_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_after_loss", mel_after_loss.item(), global_steps)
+                if training is True:
+                    self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+                                                       global_step=global_steps)
+                # 展示日志
+                if batch_idx % log_every_steps == 0:
+                    log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                           f"total_loss = {round(total_loss.item(), 3)}, "
+                           f"f0_loss = {round(f0_loss.item(), 3)}, "
+                           f"energy_loss = {round(energy_loss.item(), 3)}, "
+                           f"dur_loss = {round(duration_loss.item(), 3)}, "
+                           f"mel_before_loss = {round(mel_before_loss.item(), 3)}, "
+                           f"mel_after_loss = {round(mel_after_loss.item(), 3)}."
+                           f"")
+                    print(log)
+                    self.write_training_log(log, "a")
 
-            self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
-                                               global_step=global_steps)
-            # 展示日志
-            if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
-                       f"total_loss = {round(total_loss.item(), 3)}, "
-                       f"f0_loss = {round(f0_loss.item(), 3)}, "
-                       f"energy_loss = {round(energy_loss.item(), 3)}, "
-                       f"dur_loss = {round(duration_loss.item(), 3)}, "
-                       f"mel_before_loss = {round(mel_before_loss.item(), 3)}, "
-                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}."
-                       f"")
-                print(log)
-                self.write_training_log(log, "a")
+                # 保存验证集的合成Mel谱
+                if training is False:
+                    self.save_mel_images(mel_gt, mel_before, mel_after, uttids)
 
         # end of epoch
         epoch_total_loss /= batch_per_epoch
@@ -214,117 +229,7 @@ class FastSpeechExecutor(BaseExecutor):
         print(log)
         self.write_training_log(log, "a")
 
-    def valid_one_epoch(self):
-        """ 验证一个 epoch """
-
-        self.model.eval()
-        flag = "valid"
-        data_loader = self.train_data_loader
-
-        epoch_total_loss = torch.tensor([0.0]).to(self.device)
-        epoch_f0_loss = torch.tensor([0.0]).to(self.device)
-        epoch_energy_loss = torch.tensor([0.0]).to(self.device)
-        epoch_dur_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mel_before_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mel_after_loss = torch.tensor([0.0]).to(self.device)
-
-        batch_per_epoch = len(data_loader)
-        log_every_steps = min(batch_per_epoch, self.log_every_steps)
-
-        st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
-
-            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
-
-            uttids = batch["uttid"]
-            phoneme_ids = batch["phoneme_ids"].to(self.device)
-            spk_id = batch["spk_id"].to(self.device)
-            duration_gt = batch["duration"].to(self.device)
-            mel_gt = batch["mel"].to(self.device)
-            f0_gt = batch["f0"].to(self.device)
-            energy_gt = batch["energy"].to(self.device)
-            mel_length = batch["mel_length"].to(self.device)
-            f0_length = batch["f0_length"].to(self.device)
-            energy_length = batch["energy_length"].to(self.device)
-
-            # 前向计算
-            mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                = self.model(phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length)
-
-            # loss
-            f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
-            energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
-
-            duration_gt = torch.log(duration_gt + 1)
-            duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
-
-            mel_gt = mel_gt.transpose(1, 2)
-            mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
-            mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
-
-            total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
-
-            # 反向传播
-            # total_loss.backward()
-            # self.optimizer.step()
-            # self.optimizer.zero_grad()
-
-            # end of step
-            # self.lr_scheduler.step()
-
-            epoch_total_loss += total_loss.item()
-            epoch_f0_loss += f0_loss.item()
-            epoch_energy_loss += energy_loss.item()
-            epoch_dur_loss += duration_loss.item()
-            epoch_mel_before_loss += mel_before_loss.item()
-            epoch_mel_after_loss += mel_after_loss.item()
-
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_f0_loss", f0_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_energy_loss", energy_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_duration_loss", duration_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_before_loss", mel_before_loss.item(), global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mel_after_loss", mel_after_loss.item(), global_steps)
-
-            # self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
-            #                                    global_step=global_steps)
-            # 展示日志
-            if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
-                       f"total_loss = {round(total_loss.item(), 3)}, "
-                       f"f0_loss = {round(f0_loss.item(), 3)}, "
-                       f"energy_loss = {round(energy_loss.item(), 3)}, "
-                       f"dur_loss = {round(duration_loss.item(), 3)}, "
-                       f"mel_before_loss = {round(mel_before_loss.item(), 3)}, "
-                       f"mel_after_loss = {round(mel_after_loss.item(), 3)}."
-                       f"")
-                print(log)
-                self.write_training_log(log, "a")
-
-            self.save_mel_images(mel_gt, mel_before, mel_after, uttids)
-
-        # end of epoch
-        epoch_total_loss /= batch_per_epoch
-        epoch_f0_loss /= batch_per_epoch
-        epoch_energy_loss /= batch_per_epoch
-        epoch_dur_loss /= batch_per_epoch
-        epoch_mel_before_loss /= batch_per_epoch
-        epoch_mel_after_loss /= batch_per_epoch
-        et = time.time()
-        log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
-               f"\n"
-               f"epoch[{self.cur_epoch}]: "
-               f"total_loss = {round(epoch_total_loss.item(), 3)}, "
-               f"f0_loss = {round(epoch_f0_loss.item(), 3)}, "
-               f"energy_loss = {round(epoch_energy_loss.item(), 3)}, "
-               f"dur_loss = {round(epoch_dur_loss.item(), 3)}, "
-               f"mel_before_loss = {round(epoch_mel_before_loss.item(), 3)}, "
-               f"mel_after_loss = {round(epoch_mel_after_loss.item(), 3)}."
-               f"\n")
-        print(log)
-        self.write_training_log(log, "a")
-
-    def gen_mel_spec(self, dir_name="gen_mel_spec"):  # TODO 检查下这段代码的逻辑、规范化存储路径
+    def gen_mel_spec(self, dir_name="gen_mel_spec"):
         """ 合成Mel谱 """
 
         # 尝试加载预训练模型

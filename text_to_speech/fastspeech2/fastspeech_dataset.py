@@ -55,7 +55,8 @@ class FastSpeechDataList(BaseDataList):
         assert model_type.lower() in ["acoustic model", "vocoder"]
         self.model_type = model_type.lower()  # 声学模型 or 声码器
 
-        self.use_syn_mel = str2bool(conf['use_syn_mel']) if self.model_type == "vocoder" else False   # 是否使用合成Mel谱
+        self.use_syn_mel = conf['use_syn_mel'] if self.model_type == "vocoder" else False   # 是否使用合成Mel谱
+        self.syn_mel_path = conf['syn_mel_path']  # 合成Mel谱的路径
 
         self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
         if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
@@ -86,7 +87,7 @@ class FastSpeechDataList(BaseDataList):
                     uttid = os.path.basename(path).replace(".wav", "")
                 except:
                     continue
-                if float(duration) >= self.input_max_seconds -0.5:
+                if float(duration) >= self.input_max_seconds - 0.1:
                     print(f"skip audio with duration {duration}, {uttid}")
                     continue
                 data = {}
@@ -160,15 +161,16 @@ class FastSpeechDataList(BaseDataList):
 
         # get mel
         mel = torch.tensor(mel, dtype=torch.float32)
-        mel_length = mel.shape[0]  # MEL谱长度
+        mel = mel.transpose(0, 1)  # -> [channel=80, time]
+        mel_length = mel.shape[1]  # MEL谱长度
         # get mask
         mel_mask = torch.ones_like(mel, dtype=torch.float32)
         # padding
-        if mel.shape[0] < self.input_max_length:
-            zeros_pad = torch.zeros([self.input_max_length - mel.shape[0], 80], dtype=torch.float32)
-            mel = torch.concat([mel, zeros_pad], dim=0)
+        if mel.shape[1] < self.input_max_length:
+            zeros_pad = torch.zeros([80, self.input_max_length - mel.shape[1]], dtype=torch.float32)
+            mel = torch.concat([mel, zeros_pad], dim=1)
             mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32)
-            mel_mask = torch.concat([mel_mask, mask_zeros], dim=0)
+            mel_mask = torch.concat([mel_mask, mask_zeros], dim=1)
 
         # get F0
         f0 = np.log(np.maximum(f0, 1e-10))
@@ -178,7 +180,7 @@ class FastSpeechDataList(BaseDataList):
         if len(f0) < self.input_max_length:
             zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32)
             f0 = torch.concat([f0, zeros_pad], dim=0)
-            f0 *= mel_mask[:, 0]
+            f0 *= mel_mask[0, :]
 
         # get energy
         energy = np.log(np.maximum(energy, 1e-10))
@@ -188,7 +190,7 @@ class FastSpeechDataList(BaseDataList):
         if len(energy) < self.input_max_length:
             zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32)
             energy = torch.concat([energy, zeros_pad], dim=0)
-            energy *= mel_mask[:, 0]
+            energy *= mel_mask[0, :]
 
         # padding audio
         audio = torch.tensor(audio, dtype=torch.float32)
@@ -197,7 +199,7 @@ class FastSpeechDataList(BaseDataList):
             zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32)
             audio = torch.concat([audio, zeros_pad], dim=0)
 
-        assert len(energy) == len(f0) == mel.shape[0] == len(audio) // self.hop_size
+        assert len(energy) == len(f0) == mel.shape[1] == len(audio) // self.hop_size
 
         return mel, f0, energy, audio, mel_mask, seconds, mel_length, f0_length, energy_length
 
@@ -211,6 +213,23 @@ class FastSpeechDataList(BaseDataList):
             phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
         return phoneme_ids
 
+    def load_syn_mel(self, uttid):
+        """ 根据 uttid 找出对应的合成Mel谱； """
+
+        syn_mel_path = os.path.join(self.syn_mel_path, uttid + ".npy")
+        if not os.path.exists(syn_mel_path):
+            return None
+
+        syn_mel = np.load(syn_mel_path)  # [channel=80, time]
+        syn_mel = torch.tensor(syn_mel, dtype=torch.float32)
+
+        # padding
+        if syn_mel.shape[1] < self.input_max_length:
+            zeros_pad = torch.zeros([80, self.input_max_length - syn_mel.shape[1]], dtype=torch.float32)
+            syn_mel = torch.concat([syn_mel, zeros_pad], dim=1)
+
+        return syn_mel
+
     def __iter__(self):
         """ 模型加载数据集的入口； """
         if self.shuffle is True:
@@ -221,10 +240,13 @@ class FastSpeechDataList(BaseDataList):
              data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
 
             if data['mel_type'] == "syn":
-                data['mel'] = self.load_syn_mel(data['uttid'])  # TODO 根据uttid，加载前面合成到的Mel谱
+                data['mel'] = self.load_syn_mel(data['uttid'])
+                if data['mel'] is None:
+                    continue
 
             data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
             yield data
+
 
 
 def get_tts_dataloader(
@@ -262,11 +284,11 @@ def get_tts_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "../examples/Yuanshen/configs/fs+hifi/base-2.yaml"
+    conf_file = "../examples/Yuanshen/configs/fs+hifi/demo-2.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 
-    configs['batch_size'] = 1
+    configs['batch_size'] = 2
     # configs["train_data"] = configs["valid_data"]
 
     # 测试 dataloader 的功能
