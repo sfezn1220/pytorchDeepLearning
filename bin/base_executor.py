@@ -53,46 +53,51 @@ class BaseExecutor:
         self.max_epochs = int(self.trainer_conf["epochs"])
         self.max_steps = -1  # 初始化：随便定个值；
         self.cur_epoch = -1
+        self.last_epoch = -1  # 预训练模型的epoch
 
         # 初始化：每多少个step展示一次日志
         self.log_every_steps = int(self.trainer_conf["log_every_steps"])
 
-        # 初始化：模型的名称、日志名称、
+        # 初始化：模型的名称、日志名称
         self.name = name + "-" if len(name) > 0 else ""
-        self.log_file_name = self.name + "training.log"
-        self.model_name_prefix = self.name + "model_epoch"
-        self.states_name_prefix = self.name + "states_epoch"
-        self.tensorboard_dir_name = self.name + "logs"
+        self.log_file = os.path.join(self.ckpt_path, self.name + "training.log")
+        self.tensorboard_dir_name = os.path.join(self.ckpt_path, self.name + "logs")
+
+        # 初始化：存储的模型文件名称
+        self.model_name_prefix = self.name + 'model_epoch'
+        self.model_save_path = lambda x: os.path.join(self.ckpt_path, self.model_name_prefix + '-{:04d}.pth'.format(x))
+        # 初始化：存储的参数文件名称
+        self.states_name_prefix = self.name + 'states_epoch'
+        self.states_save_path = lambda x: os.path.join(self.ckpt_path, self.states_name_prefix + '-{:04d}.pth'.format(x))
+
+        # 加载预训练模型
+        self.init_pretrain_model()
 
     def write_training_log(self, logs: str, mode: str = "a"):
         """ 记录下日志 """
         assert mode in ["w", "a"]
 
-        log_file = os.path.join(self.ckpt_path, self.log_file_name)
-        with open(log_file, mode, encoding='utf-8') as w1:
+        with open(self.log_file, mode, encoding='utf-8') as w1:
             w1.write(logs + "\n")
 
     def save_ckpt(self):
         """ 存储ckpt，并定期删除多余的； """
-        print(f"\n"
-              f"saving checkpoint of epoch {self.cur_epoch}")
+        print(f"saving checkpoint of epoch {self.cur_epoch}\n")
 
         # 模型权重存储在这里
-        model_path = os.path.join(self.ckpt_path, self.model_name_prefix + '-{:04d}.pth'.format(self.cur_epoch))
         torch.save(
             {
                 'epoch': self.cur_epoch,
                 'model_state_dict': self.model.state_dict(),
-            }, model_path
+            }, self.model_save_path(self.cur_epoch)
         )
         # 优化器参数存储在这里
-        states_path = os.path.join(self.ckpt_path, self.states_name_prefix + '-{:04d}.pth'.format(self.cur_epoch))
         torch.save(
             {
                 'epoch': self.cur_epoch,
                 'optimizer_state_dict': self.optimizer.state_dict(),
                 'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
-            }, states_path
+            }, self.states_save_path(self.cur_epoch)
         )
         # 自动删除多余的checkpoint
         self.delete_extra_ckpt_auto()
@@ -164,52 +169,58 @@ class BaseExecutor:
             model_dict = torch.load(last_model_path)
             stats_dict = torch.load(last_stats_path)
 
-            last_epoch = int(model_dict["epoch"])
+            self.last_epoch = int(model_dict["epoch"])
             self.model.load_state_dict(model_dict["model_state_dict"])
             self.optimizer.load_state_dict(stats_dict['optimizer_state_dict'])
             self.lr_scheduler.load_state_dict(stats_dict['lr_scheduler_state_dict'])
 
             print(f"load ckpt: {os.path.basename(last_model_path)}")
-            return last_epoch
+            return
 
         # 再看看有没有预训练模型：（self.cur_epoch < 0 表示 epoch 0 开始之前）
         elif os.path.exists(self.pretrain_file):
             model_dict = torch.load(self.pretrain_file)
             self.model.load_state_dict(model_dict["model_state_dict"])
             print(f"load pretrain: {os.path.basename(self.pretrain_file)}")
-            return -1
+            return
 
         else:
-            return -1
+            return
 
     def init_summary_writer(self):
         """ 在每个epoch的开始，设置tensorboard； """
         # 先检查：如果是从头训练，就删除以前的 tensorboard 文件
         if self.cur_epoch == 0:
-            if os.path.exists(os.path.join(self.ckpt_path, self.tensorboard_dir_name)):
-                for file in os.listdir(os.path.join(self.ckpt_path, self.tensorboard_dir_name)):
+            if os.path.exists(self.tensorboard_dir_name):
+                for file in os.listdir(self.tensorboard_dir_name):
                     try:
-                        os.remove(os.path.join(os.path.join(self.ckpt_path, self.tensorboard_dir_name, file)))
+                        os.remove(os.path.join(self.tensorboard_dir_name, file))
                     except:
                         pass
         # 设置 tensorboard，每个epoch保存一次
-        self.tensorboard_writer = SummaryWriter(os.path.join(self.ckpt_path, self.tensorboard_dir_name))
+        self.tensorboard_writer = SummaryWriter(self.tensorboard_dir_name)
 
     def close_summary_writer(self):
         """ 在每个epoch的最后，保存一个epoch的tensorboard； """
         self.tensorboard_writer.close()
 
-    def run(self):
-
+    def init_pretrain_model(self):
+        """ 加载预训练模型、确定当前epoch； """
         # 尝试加载预训练模型
-        last_epoch = self.load_ckpt_auto()
+        if self.model is not None:
+            self.load_ckpt_auto()
+            self.cur_epoch = self.last_epoch + 1
 
         # 写入日志
-        if last_epoch < 0:  # 从头开始训练
+        if self.last_epoch < 0:  # 从头开始训练
             self.write_training_log("start training...\n", "w")
 
+        return
+
+    def run(self):
+
         # 正式开始训练
-        for epoch in range(last_epoch+1, self.max_epochs):
+        for epoch in range(self.last_epoch+1, self.max_epochs):
             self.cur_epoch = epoch
 
             # 设置summary writer
@@ -217,20 +228,21 @@ class BaseExecutor:
 
             # 训练一个 epoch
             self.train_data_loader.dataset.set_epoch(self.cur_epoch)
-            self.forward_one_epoch(training=True)
+            self.forward_one_epoch(forward_type="train")
 
             # save ckpt
             self.save_ckpt()
 
             # eval
             self.valid_data_loader.dataset.set_epoch(self.cur_epoch)
-            self.forward_one_epoch(training=False)
+            self.forward_one_epoch(forward_type="valid")
 
             # 保存当前epoch的tensorboard
             self.close_summary_writer()
 
-    def forward_one_epoch(self, training: bool = True):
+    def forward_one_epoch(self, forward_type="train"):
         """ 训练 or 验证一个 epoch；根据任务定义 """
+        assert forward_type in ["train", "valid"]
         pass
 
     def test(self):

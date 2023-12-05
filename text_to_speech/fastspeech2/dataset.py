@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 
 from bin.base_dataset import BaseDataList
 
-from text_to_speech.utils.read_textgrid import read_all_textgrid
+from text_to_speech.utils.read_textgrid import read_all_textgrid, read_spk_uttid_textgrid
 from text_to_speech.utils.gen_feature import AudioFeatureExtractor
 
 from text_to_speech.text_precess import TextFrontEnd  # 文本前端模型
@@ -47,7 +47,7 @@ class FastSpeechDataList(BaseDataList):
         self.input_max_seconds = conf['input_max_seconds']  # 输入音频的最大长度/秒，默认是 12秒
         self.input_max_length = self.input_max_seconds * self.sample_rate // self.hop_size
 
-        self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 256个字符
+        self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 196个字符
 
         self.initial_maps(conf['spk_map'])  # 初始化：spk_map
         self.mfa_dir = conf['mfa_dir']  # MFA对齐结果
@@ -83,11 +83,16 @@ class FastSpeechDataList(BaseDataList):
                 if line.startswith("spk"):
                     continue
                 try:
-                    spk, duration, text, path = line.split(' ', 3)
+                    if len(line.split(' ')) == 4:
+                        spk, duration, text, path = line.split(' ', 3)
+                    elif len(line.split(' ')) == 5:
+                        spk, duration, text, pinyin, path = line.split(' ', 4)
+                    else:
+                        raise ValueError(f"数据集格式不正确；")
                     uttid = os.path.basename(path).replace(".wav", "")
                 except:
                     continue
-                if float(duration) >= self.input_max_seconds - 0.1:
+                if float(duration) >= self.input_max_seconds:
                     print(f"skip audio with duration {duration}, {uttid}")
                     continue
                 data = {}
@@ -114,13 +119,15 @@ class FastSpeechDataList(BaseDataList):
     def get_mfa_results(self):
         """从MFA对齐结果中，读取duration信息；"""
         # 先收集uttid：
-        uttid_list = []
+        spk_uttid_list = []
         for data in tqdm.tqdm(self.data_list):
+            spk = data["spk"]
             uttid = data['uttid']
-            uttid_list.append(uttid)
+            spk_uttid_list.append([spk, uttid])
 
         # 读取MFA对齐结果中的所有的textgrid文件
-        all_dur_list = read_all_textgrid(self.mfa_dir)
+        # all_dur_list = read_all_textgrid(self.mfa_dir)
+        all_dur_list = read_spk_uttid_textgrid(self.mfa_dir, spk_uttid_list=spk_uttid_list)
 
         print(f"generator durations for MFA results...")
 
@@ -171,6 +178,9 @@ class FastSpeechDataList(BaseDataList):
             mel = torch.concat([mel, zeros_pad], dim=1)
             mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32)
             mel_mask = torch.concat([mel_mask, mask_zeros], dim=1)
+        elif mel.shape[1] > self.input_max_length:
+            mel = mel[:, self.input_max_length]
+            mel_mask = mel_mask[:, self.input_max_length]
 
         # get F0
         f0 = np.log(np.maximum(f0, 1e-10))
@@ -181,6 +191,8 @@ class FastSpeechDataList(BaseDataList):
             zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32)
             f0 = torch.concat([f0, zeros_pad], dim=0)
             f0 *= mel_mask[0, :]
+        elif len(f0) > self.input_max_length:
+            f0 = f0[:self.input_max_length]
 
         # get energy
         energy = np.log(np.maximum(energy, 1e-10))
@@ -191,6 +203,8 @@ class FastSpeechDataList(BaseDataList):
             zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32)
             energy = torch.concat([energy, zeros_pad], dim=0)
             energy *= mel_mask[0, :]
+        elif len(energy) > self.input_max_length:
+            energy = energy[:self.input_max_length]
 
         # padding audio
         audio = torch.tensor(audio, dtype=torch.float32)
@@ -198,6 +212,8 @@ class FastSpeechDataList(BaseDataList):
         if len(audio) < self.input_max_length * self.hop_size:
             zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32)
             audio = torch.concat([audio, zeros_pad], dim=0)
+        elif len(audio) > self.input_max_length * self.hop_size:
+            audio = audio[:self.input_max_length * self.hop_size]
 
         assert len(energy) == len(f0) == mel.shape[1] == len(audio) // self.hop_size
 
@@ -211,6 +227,10 @@ class FastSpeechDataList(BaseDataList):
         if len(phoneme_ids) < self.input_max_tokens:
             zeros_pad = torch.zeros([self.input_max_tokens - phoneme_ids.shape[-1]], dtype=torch.int32)
             phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
+        elif len(phoneme_ids) > self.input_max_tokens:
+            raise ValueError(f"超过预设的最大音素长度，需要增大 self.input_max_tokens：\n"
+                             f"text{len(text)} = {text}\n"
+                             f"phoneme_lens = {len(phoneme_ids)}")
         return phoneme_ids
 
     def load_syn_mel(self, uttid):
@@ -227,6 +247,9 @@ class FastSpeechDataList(BaseDataList):
         if syn_mel.shape[1] < self.input_max_length:
             zeros_pad = torch.zeros([80, self.input_max_length - syn_mel.shape[1]], dtype=torch.float32)
             syn_mel = torch.concat([syn_mel, zeros_pad], dim=1)
+        elif syn_mel.shape[1] > self.input_max_length:
+            raise ValueError(f"读取到的Mel谱长度为 {syn_mel.shape[1]}，超过预设的最大长度 {self.input_max_length} ,"
+                             f"需要增大 self.input_max_length .")
 
         return syn_mel
 
@@ -246,7 +269,6 @@ class FastSpeechDataList(BaseDataList):
 
             data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
             yield data
-
 
 
 def get_tts_dataloader(

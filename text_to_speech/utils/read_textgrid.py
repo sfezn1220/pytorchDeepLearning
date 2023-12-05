@@ -68,7 +68,6 @@ def read_all_textgrid(textgred_dir: str = "", uttid_useful_list: list = []) -> d
     """读取这个文件夹内的所有textgrid文件；返回字典：key=uttid, value=[[phoneme1, phoneme2, ...], [dur1, dur2, ...]]；"""
 
     uttid2textgrid = {}
-
     print(f"loading all textgrid files...")
 
     for spk in tqdm.tqdm(os.listdir(textgred_dir)):
@@ -93,6 +92,31 @@ def read_all_textgrid(textgred_dir: str = "", uttid_useful_list: list = []) -> d
                 uttid2textgrid[uttid] = [phoneme_list, dur_list]
             else:
                 print(f"重复的 uttid: {uttid}")
+
+    return uttid2textgrid
+
+
+def read_spk_uttid_textgrid(textgred_dir: str = "", spk_uttid_list: list = []) -> dict:
+    """ 根据指定的 spk 和 uttid，找出对应的 textgrid 文件； """
+
+    uttid2textgrid = {}
+    print(f"loading all textgrid files...")
+
+    for spk, uttid in tqdm.tqdm(spk_uttid_list):
+
+        full_path = os.path.join(textgred_dir, spk, uttid + ".TextGrid")
+        if not os.path.exists(full_path):
+            continue
+
+        phoneme_dur_list = read_one_textgrid(full_path)  # 读取一条textgrid文件，删除空字符
+
+        phoneme_list = [p for p, d in phoneme_dur_list]
+        dur_list = [d for p, d in phoneme_dur_list]
+
+        if uttid not in uttid2textgrid:
+            uttid2textgrid[uttid] = [phoneme_list, dur_list]
+        else:
+            print(f"重复的 uttid: {uttid}")
 
     return uttid2textgrid
 

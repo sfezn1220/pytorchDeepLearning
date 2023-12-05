@@ -5,6 +5,7 @@ import shutil
 import copy
 import torch
 import torch.nn as nn
+from contextlib import nullcontext
 import time
 import tqdm
 import soundfile as sf
@@ -12,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bin.base_executor import BaseExecutor
-from text_to_speech.fastspeech2.fastspeech_dataset import get_tts_dataloader
+from text_to_speech.fastspeech2.dataset import get_tts_dataloader
 from text_to_speech.hifigan.hifigan import HiFiGAN
 from text_to_speech.hifigan.multi_stft_loss import MultiSTFTLoss
 
@@ -74,7 +75,7 @@ class HiFiGANExecutor(BaseExecutor):
         self.stft_loss = MultiSTFTLoss()
 
         # 合成的语音数据的路径
-        self.gen_audios_dir_name = self.name + "predict_epoch"
+        self.gen_audios_dir_name = lambda x: os.path.join(self.ckpt_path, self.name + 'predict_epoch-{:04d}'.format(x))
 
     def save_gen_audios(self, audio_gen, uttids):
         """ 保存合成音频； """
@@ -84,7 +85,7 @@ class HiFiGANExecutor(BaseExecutor):
         audio_gen = audio_gen.detach().cpu().numpy()
 
         # 合成语音保存在这里
-        save_dir = os.path.join(self.ckpt_path, self.gen_audios_dir_name + '-{:04d}'.format(self.cur_epoch))
+        save_dir = self.gen_audios_dir_name(self.cur_epoch)
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
 
@@ -161,203 +162,117 @@ class HiFiGANExecutor(BaseExecutor):
     def run(self):
         super().run()
 
-    def train_one_epoch(self):
-        """ 训练一个 epoch """
+    def forward_one_epoch(self, forward_type="train"):
+        """ 训练 or 验证一个 epoch； """
 
-        self.model.train()
-        flag = "train"
-        data_loader = self.train_data_loader
+        if forward_type.lower() in ["train"]:  # 模型训练
+            self.model.train()
+            flag = "train"
+            tag = nullcontext
+            data_loader = self.train_data_loader
+        elif forward_type.lower() in ["valid"]:  # 模型验证
+            self.model.eval()
+            flag = "valid"
+            tag = torch.no_grad
+            data_loader = self.valid_data_loader
+        else:
+            raise ValueError(f'forward_type must in ["train", "valid"].')
 
-        epoch_total_loss = torch.tensor([0.0]).to(self.device)
-        epoch_sc_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mag_loss = torch.tensor([0.0]).to(self.device)
-        epoch_adv_loss = torch.tensor([0.0]).to(self.device)
-        epoch_fm_loss = torch.tensor([0.0]).to(self.device)
-        epoch_real_loss = torch.tensor([0.0]).to(self.device)
-        epoch_fake_loss = torch.tensor([0.0]).to(self.device)
+        with tag():
+            epoch_total_loss = torch.tensor([0.0]).to(self.device)
+            epoch_sc_loss = torch.tensor([0.0]).to(self.device)
+            epoch_mag_loss = torch.tensor([0.0]).to(self.device)
+            epoch_adv_loss = torch.tensor([0.0]).to(self.device)
+            epoch_fm_loss = torch.tensor([0.0]).to(self.device)
+            epoch_real_loss = torch.tensor([0.0]).to(self.device)
+            epoch_fake_loss = torch.tensor([0.0]).to(self.device)
 
-        batch_per_epoch = len(data_loader)
-        log_every_steps = min(batch_per_epoch, self.log_every_steps)
+            batch_per_epoch = len(data_loader)
+            log_every_steps = min(batch_per_epoch, self.log_every_steps)
 
-        st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
+            st = time.time()
+            for batch_idx, batch in enumerate(data_loader):
 
-            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
+                global_steps = self.cur_epoch * batch_per_epoch + batch_idx
 
-            uttids = batch["uttid"]
-            spk_id = batch["spk_id"].to(self.device)
-            mel_gt = batch["mel"].to(self.device)
-            audio_gt = batch['audio'].to(self.device)
+                uttids = batch["uttid"]
+                mel_gt = batch["mel"].to(self.device)
+                audio_gt = batch['audio'].to(self.device)
 
-            # 前向计算
-            audio_gen, features_gen = self.model(mel_gt)
-            features_gt = self.model.forward_discriminator(audio_gt)
+                # 前向计算
+                audio_gen, features_gen = self.model(mel_gt)
+                features_gt = self.model.forward_discriminator(audio_gt)
 
-            # loss
-            total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss = self.cal_loss(audio_gt, audio_gen, features_gt, features_gen)
+                # loss
+                total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss = self.cal_loss(audio_gt, audio_gen, features_gt, features_gen)
 
-            # 反向传播
-            total_loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+                # 反向传播
+                if forward_type.lower() in ["train"]:  # 模型训练
+                    total_loss.backward()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
 
-            # end of step
-            self.lr_scheduler.step()
+                    # end of step
+                    self.lr_scheduler.step()
 
-            epoch_total_loss += total_loss.item()
-            epoch_sc_loss += sc_loss.item()
-            epoch_mag_loss += mag_loss.item()
-            epoch_adv_loss += adv_loss.item()
-            epoch_fm_loss += fm_loss.item()
-            epoch_real_loss += real_loss.item()
-            epoch_fake_loss += fake_loss.item()
+                if forward_type.lower() in ["train", "valid"]:  # 模型训练 or 验证
+                    epoch_total_loss += total_loss.item()
+                    epoch_sc_loss += sc_loss.item()
+                    epoch_mag_loss += mag_loss.item()
+                    epoch_adv_loss += adv_loss.item()
+                    epoch_fm_loss += fm_loss.item()
+                    epoch_real_loss += real_loss.item()
+                    epoch_fake_loss += fake_loss.item()
 
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_sc_loss", sc_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mag_loss", mag_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_adv_loss", adv_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fm_loss", fm_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_real_loss", real_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fake_loss", fake_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_sc_loss", sc_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mag_loss", mag_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_adv_loss", adv_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fm_loss", fm_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_real_loss", real_loss.item(), global_step=global_steps)
+                    self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fake_loss", fake_loss.item(), global_step=global_steps)
 
-            self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
-                                               global_step=global_steps)
+                if forward_type.lower() in ["train"]:  # 模型训练
+                    self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
+                                                       global_step=global_steps)
 
-            # 展示日志
-            if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
-                       f"total_loss = {round(total_loss.item(), 3)}, "
-                       f"sc_loss = {round(sc_loss.item(), 3)}, "
-                       f"mag_loss = {round(mag_loss.item(), 3)}, "
-                       f"adv_loss = {round(adv_loss.item(), 3)}, "
-                       f"fm_loss = {round(fm_loss.item(), 3)}, "
-                       f"real_loss = {round(real_loss.item(), 3)}, "
-                       f"fake_loss = {round(fake_loss.item(), 3)}, "
-                       f"")
-                print(log)
-                self.write_training_log(log, "a")
+                # 展示日志
+                if batch_idx % log_every_steps == 0:
+                    log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
+                           f"total_loss = {round(total_loss.item(), 3)}, "
+                           f"sc_loss = {round(sc_loss.item(), 3)}, "
+                           f"mag_loss = {round(mag_loss.item(), 3)}, "
+                           f"adv_loss = {round(adv_loss.item(), 3)}, "
+                           f"fm_loss = {round(fm_loss.item(), 3)}, "
+                           f"real_loss = {round(real_loss.item(), 3)}, "
+                           f"fake_loss = {round(fake_loss.item(), 3)}, "
+                           f"")
+                    print(log)
+                    self.write_training_log(log, "a")
 
-        # end of epoch
-        epoch_total_loss /= batch_per_epoch
-        epoch_sc_loss /= batch_per_epoch
-        epoch_mag_loss /= batch_per_epoch
-        epoch_adv_loss /= batch_per_epoch
-        epoch_fm_loss /= batch_per_epoch
-        epoch_real_loss /= batch_per_epoch
-        epoch_fake_loss /= batch_per_epoch
-        et = time.time()
-        log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
-               f"\n"
-               f"epoch[{self.cur_epoch}]: "
-               f"total_loss = {round(epoch_total_loss.item(), 3)}, "
-               f"sc_loss = {round(epoch_sc_loss.item(), 3)}, "
-               f"mag_loss = {round(epoch_mag_loss.item(), 3)}, "        
-               f"adv_loss = {round(epoch_adv_loss.item(), 3)}, "
-               f"fm_loss = {round(epoch_fm_loss.item(), 3)}, "
-               f"real_loss = {round(epoch_real_loss.item(), 3)}, "
-               f"fake_loss = {round(epoch_fake_loss.item(), 3)}, "
-               f"\n")
-        print(log)
-        self.write_training_log(log, "a")
+                # 保存：合成谱
+                if forward_type.lower() in ["valid"]:  # 模型验证
+                    self.save_gen_audios(audio_gen, uttids)
 
-    def valid_one_epoch(self):
-        """ 训练一个 epoch """
-
-        self.model.eval()
-        flag = "valid"
-        data_loader = self.valid_data_loader
-
-        epoch_total_loss = torch.tensor([0.0]).to(self.device)
-        epoch_sc_loss = torch.tensor([0.0]).to(self.device)
-        epoch_mag_loss = torch.tensor([0.0]).to(self.device)
-        epoch_adv_loss = torch.tensor([0.0]).to(self.device)
-        epoch_fm_loss = torch.tensor([0.0]).to(self.device)
-        epoch_real_loss = torch.tensor([0.0]).to(self.device)
-        epoch_fake_loss = torch.tensor([0.0]).to(self.device)
-
-        batch_per_epoch = len(data_loader)
-        log_every_steps = min(batch_per_epoch, self.log_every_steps)
-
-        st = time.time()
-        for batch_idx, batch in enumerate(data_loader):
-
-            global_steps = self.cur_epoch * batch_per_epoch + batch_idx
-
-            uttids = batch["uttid"]
-            spk_id = batch["spk_id"].to(self.device)
-            mel_gt = batch["mel"].to(self.device)
-            audio_gt = batch['audio'].to(self.device)
-
-            # 前向计算
-            audio_gen, features_gen = self.model(mel_gt)
-            features_gt = self.model.forward_discriminator(audio_gt)
-
-            # loss
-            total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss = self.cal_loss(audio_gt, audio_gen, features_gt, features_gen)
-
-            # 反向传播
-            # total_loss.backward()
-            # self.optimizer.step()
-            # self.optimizer.zero_grad()
-
-            # end of step
-            # self.lr_scheduler.step()
-
-            epoch_total_loss += total_loss.item()
-            epoch_sc_loss += sc_loss.item()
-            epoch_mag_loss += mag_loss.item()
-            epoch_adv_loss += adv_loss.item()
-            epoch_fm_loss += fm_loss.item()
-            epoch_real_loss += real_loss.item()
-            epoch_fake_loss += fake_loss.item()
-
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_total_loss", total_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_sc_loss", sc_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_mag_loss", mag_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_adv_loss", adv_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fm_loss", fm_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_real_loss", real_loss.item(), global_step=global_steps)
-            self.tensorboard_writer.add_scalar(f"{flag}/{flag}_fake_loss", fake_loss.item(), global_step=global_steps)
-
-            # self.tensorboard_writer.add_scalar(f"learning_rate/learning_rate", self.lr_scheduler.get_last_lr(),
-            #                                    global_step=global_steps)
-
-            # 保存：合成谱
-            self.save_gen_audios(audio_gen, uttids)
-
-            # 展示日志
-            if batch_idx % log_every_steps == 0:
-                log = (f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]: "
-                       f"total_loss = {round(total_loss.item(), 3)}, "
-                       f"sc_loss = {round(sc_loss.item(), 3)}, "
-                       f"mag_loss = {round(mag_loss.item(), 3)}, "
-                       f"adv_loss = {round(adv_loss.item(), 3)}, "
-                       f"fm_loss = {round(fm_loss.item(), 3)}, "
-                       f"real_loss = {round(real_loss.item(), 3)}, "
-                       f"fake_loss = {round(fake_loss.item(), 3)}, "
-                       f"")
-                print(log)
-                self.write_training_log(log, "a")
-
-        # end of epoch
-        epoch_total_loss /= batch_per_epoch
-        epoch_sc_loss /= batch_per_epoch
-        epoch_mag_loss /= batch_per_epoch
-        epoch_adv_loss /= batch_per_epoch
-        epoch_fm_loss /= batch_per_epoch
-        epoch_real_loss /= batch_per_epoch
-        epoch_fake_loss /= batch_per_epoch
-        et = time.time()
-        log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
-               f"\n"
-               f"epoch[{self.cur_epoch}]: "
-               f"total_loss = {round(epoch_total_loss.item(), 3)}, "
-               f"sc_loss = {round(epoch_sc_loss.item(), 3)}, "
-               f"mag_loss = {round(epoch_mag_loss.item(), 3)}, "        
-               f"adv_loss = {round(epoch_adv_loss.item(), 3)}, "
-               f"fm_loss = {round(epoch_fm_loss.item(), 3)}, "
-               f"real_loss = {round(epoch_real_loss.item(), 3)}, "
-               f"fake_loss = {round(epoch_fake_loss.item(), 3)}, "
-               f"\n")
-        print(log)
-        self.write_training_log(log, "a")
+            # end of epoch
+            epoch_total_loss /= batch_per_epoch
+            epoch_sc_loss /= batch_per_epoch
+            epoch_mag_loss /= batch_per_epoch
+            epoch_adv_loss /= batch_per_epoch
+            epoch_fm_loss /= batch_per_epoch
+            epoch_real_loss /= batch_per_epoch
+            epoch_fake_loss /= batch_per_epoch
+            et = time.time()
+            log = (f"{flag} epoch end, {round((et - st) / 60, 2)} minutes,"
+                   f"\n"
+                   f"epoch[{self.cur_epoch}]: "
+                   f"total_loss = {round(epoch_total_loss.item(), 3)}, "
+                   f"sc_loss = {round(epoch_sc_loss.item(), 3)}, "
+                   f"mag_loss = {round(epoch_mag_loss.item(), 3)}, "        
+                   f"adv_loss = {round(epoch_adv_loss.item(), 3)}, "
+                   f"fm_loss = {round(epoch_fm_loss.item(), 3)}, "
+                   f"real_loss = {round(epoch_real_loss.item(), 3)}, "
+                   f"fake_loss = {round(epoch_fake_loss.item(), 3)}, "
+                   f"\n")
+            print(log)
+            self.write_training_log(log, "a")

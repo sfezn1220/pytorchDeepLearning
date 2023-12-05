@@ -102,11 +102,12 @@ class FastSpeech2(nn.Module):
 
         # Length Regulation
         duration_predict = self.duration_predictor(encoder_outputs, phoneme_mask)  # [batch, 1, time]
+        duration_predict = duration_predict.squeeze(1)  # [batch, time]
         if duration_gt is not None:
             r = random.uniform(0, complete_percent)
             # 预测的duration
             duration_predict_exp = nn.ReLU()(torch.exp(duration_predict) - 1)
-            duration_predict_exp = duration_predict_exp.squeeze(1)
+            duration_predict_exp = duration_predict_exp
             # 真实的duration
             duration_gt = duration_gt
             # 加到一起

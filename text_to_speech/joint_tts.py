@@ -4,14 +4,16 @@ import os
 import copy
 import soundfile as sf
 
+import torch
+
 from bin.base_executor import BaseExecutor
-from text_to_speech.fastspeech2.fastspeech_dataset import get_tts_dataloader
-from text_to_speech.fastspeech2.fastspeech_models import FastSpeech2
+from text_to_speech.fastspeech2.dataset import get_tts_dataloader
+from text_to_speech.fastspeech2.fastspeech2 import FastSpeech2
 from text_to_speech.hifigan.hifigan import HiFiGAN
 
 
 class JointTTS(BaseExecutor):
-    """ 合并：声学模型 & 声码器； """  # TODO  还需要调试；
+    """ 合并：声学模型 & 声码器； """
 
     def __init__(self,
                  conf_file: str,
@@ -41,9 +43,19 @@ class JointTTS(BaseExecutor):
         self.test_data_loader = get_tts_dataloader(
             data_path=test_data_conf["test_data"],
             data_conf=test_data_conf,
-            model_type="acoustic model",
+            model_type="vocoder",
             data_type="test",
         )
+
+        self.load_models()
+
+    def load_models(self):
+        """ 依次读取：声学模型、声码器； """
+        acoustic_model_dict = torch.load("F:\\models_tts_fs+hifi\\demo\\fastspeech2-model_epoch-0181.pth")
+        self.acoustic_model.load_state_dict(acoustic_model_dict["model_state_dict"])
+
+        vocoder_model_dict = torch.load("F:\\models_tts_fs+hifi\\demo\\hifigan-model_epoch-0035.pth")
+        self.vocoder.load_state_dict(vocoder_model_dict["model_state_dict"])
 
     def test(self):
         """ 模型推理部分； """
@@ -56,13 +68,13 @@ class JointTTS(BaseExecutor):
             uttids = batch["uttid"]
             phoneme_ids = batch["phoneme_ids"].to(self.device)
             spk_id = batch["spk_id"].to(self.device)
-            duration_gt = batch["duration"].to(self.device)
 
             # 声学模型
-            mel_after, mel_before, f0_predict, energy_predict, duration_predict = self.acoustic_model(phoneme_ids, spk_id, duration_gt)
+            mel_after, mel_before, f0_predict, energy_predict, duration_predict = \
+                self.acoustic_model(phoneme_ids, spk_id)
 
             # 声码器
-            audio_gen = self.vocoder.inference(mel_before)
+            audio_gen = self.vocoder.inference(mel_after)
 
             if len(audio_gen.shape) == 3:
                 audio_gen = audio_gen.squeeze(1)  # [batch, 1, time] -> [batch, time]
@@ -75,8 +87,9 @@ class JointTTS(BaseExecutor):
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
 
-            sf.write(
-                file=os.path.join(save_dir, str(spk_id.detach().cpu()) + ".wav"),
-                data=audio_gen,
-                samplerate=self.sample_rate,
-            )
+            for audio_gen_i, uttids_i in zip(audio_gen, uttids):
+                sf.write(
+                    file=os.path.join(save_dir, str(uttids_i) + ".wav"),
+                    data=audio_gen_i,
+                    samplerate=self.sample_rate,
+                )

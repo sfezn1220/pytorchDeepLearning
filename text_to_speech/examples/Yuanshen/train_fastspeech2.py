@@ -2,7 +2,7 @@
 
 import torch
 
-from text_to_speech.fastspeech2.fastspeech_executor import FastSpeechExecutor
+from text_to_speech.fastspeech2.executor import FastSpeechExecutor
 
 
 def main():
@@ -17,7 +17,7 @@ def main():
 
     trainer.run()
 
-    # trainer.gen_mel_spec()
+    # trainer.forward_one_epoch(forward_type="gen_spec")
 
     return
 
