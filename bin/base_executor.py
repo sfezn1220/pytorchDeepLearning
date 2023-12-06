@@ -209,7 +209,7 @@ class BaseExecutor:
         # 尝试加载预训练模型
         if self.model is not None:
             self.load_ckpt_auto()
-            self.cur_epoch = self.last_epoch + 1
+            self.cur_epoch = self.last_epoch
 
         # 写入日志
         if self.last_epoch < 0:  # 从头开始训练

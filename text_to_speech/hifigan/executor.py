@@ -77,6 +77,9 @@ class HiFiGANExecutor(BaseExecutor):
         # 合成的语音数据的路径
         self.gen_audios_dir_name = lambda x: os.path.join(self.ckpt_path, self.name + 'predict_epoch-{:04d}'.format(x))
 
+        # 加载预训练模型
+        self.init_pretrain_model()
+
     def save_gen_audios(self, audio_gen, uttids):
         """ 保存合成音频； """
         if len(audio_gen.shape) == 3:
