@@ -34,7 +34,7 @@ class HiFiGANExecutor(BaseExecutor):
         # 读取 configs.yaml
         train_data_conf = copy.deepcopy(self.trainer_conf)
         valid_data_conf = copy.deepcopy(self.trainer_conf)
-        # valid_data_conf['shuffle'] = False
+        valid_data_conf['shuffle'] = False
 
         self.sample_rate = train_data_conf['sample_rate']
 

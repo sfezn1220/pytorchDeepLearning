@@ -10,16 +10,13 @@ import random
 import torch
 from torch.utils.data import DataLoader
 
-from bin.base_dataset import BaseDataList
+from text_to_speech.bin.tts_base_dataset import TTSBaseDataList
 
 from text_to_speech.utils.read_textgrid import read_all_textgrid, read_spk_uttid_textgrid
-from text_to_speech.utils.gen_feature import AudioFeatureExtractor
-
-from text_to_speech.text_precess import TextFrontEnd  # 文本前端模型
 from text_to_speech.utils import str2bool  # 字符串转布尔值
 
 
-class FastSpeechDataList(BaseDataList):
+class FastSpeechDataList(TTSBaseDataList):
     def __init__(self, data_list_file: str, conf: Dict, model_type: str = "acoustic model", data_type: str = "train"):
         """
         定义数据集：输入数据数据的格式；
@@ -29,27 +26,8 @@ class FastSpeechDataList(BaseDataList):
         :param data_type: ["train", "valid"]
         :return:
         """
-        super().__init__(conf, data_type)
+        super().__init__(data_list_file, conf, data_type)
 
-        self.sample_rate = conf['sample_rate']  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
-        self.hop_size = conf['hop_size']  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
-        self.fft_size = conf['fft_size']
-        self.win_length = conf['win_length']
-        self.window = conf['window']
-        self.num_mels = conf['num_mels']
-
-        self.mel_f_min = conf['mel_f_min']  # Mel谱频率的最小值
-        self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
-
-        self.text_processor = TextFrontEnd(phoneme_map_file=conf['phoneme_map'])
-        self.feature_extractor = AudioFeatureExtractor(conf)
-
-        self.input_max_seconds = conf['input_max_seconds']  # 输入音频的最大长度/秒，默认是 12秒
-        self.input_max_length = self.input_max_seconds * self.sample_rate // self.hop_size
-
-        self.input_max_tokens = conf['input_max_tokens']  # 输入音素的最大长度/个，默认是 196个字符
-
-        self.initial_maps(conf['spk_map'])  # 初始化：spk_map
         self.mfa_dir = conf['mfa_dir']  # MFA对齐结果
 
         assert model_type.lower() in ["acoustic model", "vocoder"]
@@ -58,63 +36,8 @@ class FastSpeechDataList(BaseDataList):
         self.use_syn_mel = conf['use_syn_mel'] if self.model_type == "vocoder" else False   # 是否使用合成Mel谱
         self.syn_mel_path = conf['syn_mel_path']  # 合成Mel谱的路径
 
-        self.data_list = self.get_tts_data(data_list_file)  # 输入数据集，list 格式
         if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
             self.get_mfa_results()  # 读取duration信息
-
-    def initial_maps(self, spk_map_file: str, split_symbol: str = " "):
-        """初始化： spk_map；"""
-        self.spk_map = {}
-        with open(spk_map_file, 'r', encoding='utf-8') as r1:
-            for line in r1.readlines():
-                try:
-                    spk, spk_id = line.strip().split(split_symbol)
-                except:
-                    continue
-                self.spk_map[spk] = int(spk_id)
-        return
-
-    def get_tts_data(self, data_list_file: str):
-        """ 最开始的 读取 label 文件的操作；"""
-        data_list = []
-        with open(data_list_file, 'r', encoding='utf-8') as r1:
-            for line in r1.readlines():
-                line = line.strip()
-                if line.startswith("spk"):
-                    continue
-                try:
-                    if len(line.split(' ')) == 4:
-                        spk, duration, text, path = line.split(' ', 3)
-                    elif len(line.split(' ')) == 5:
-                        spk, duration, text, pinyin, path = line.split(' ', 4)
-                    else:
-                        raise ValueError(f"数据集格式不正确；")
-                    uttid = os.path.basename(path).replace(".wav", "")
-                except:
-                    continue
-                if float(duration) >= self.input_max_seconds:
-                    print(f"skip audio with duration {duration}, {uttid}")
-                    continue
-                data = {}
-                data["spk"] = spk
-                data["spk_id"] = self.spk_map[spk]
-                data["path"] = path
-                data["uttid"] = uttid
-
-                data["phonemes"] = self.text_processor.text_processor(text)[-1]  # 文本前端模型：文本 -> 音素
-
-                data['phoneme_ids'] = self.get_phoneme_ids(text)  # 调用文本前端模型：文本转音素ID
-
-                data['mel_type'] = "raw"
-                data_list.append(data)
-
-                if self.use_syn_mel is True:  # 如果使用合成谱，就复制一份数据；
-                    data_copy = copy.deepcopy(data)
-                    data_copy['mel_type'] = "syn"
-                    data_list.append(data_copy)
-
-        print(f"读取到语音数据：{len(data_list)}条。注意 use_syn_mel is {self.use_syn_mel}.")
-        return data_list
 
     def get_mfa_results(self):
         """从MFA对齐结果中，读取duration信息；"""
@@ -218,20 +141,6 @@ class FastSpeechDataList(BaseDataList):
         assert len(energy) == len(f0) == mel.shape[1] == len(audio) // self.hop_size
 
         return mel, f0, energy, audio, mel_mask, seconds, mel_length, f0_length, energy_length
-
-    def get_phoneme_ids(self, text: str):
-        """ 文本到音素ID，并padding到统一长度；"""
-        phoneme_ids = self.text_processor.text2phoneme_ids(text)  # 文本前端模型：文本 -> 音素ID
-        phoneme_ids = torch.tensor(phoneme_ids, dtype=torch.int32)
-        # padding
-        if len(phoneme_ids) < self.input_max_tokens:
-            zeros_pad = torch.zeros([self.input_max_tokens - phoneme_ids.shape[-1]], dtype=torch.int32)
-            phoneme_ids = torch.concat([phoneme_ids, zeros_pad], dim=0)
-        elif len(phoneme_ids) > self.input_max_tokens:
-            raise ValueError(f"超过预设的最大音素长度，需要增大 self.input_max_tokens：\n"
-                             f"text{len(text)} = {text}\n"
-                             f"phoneme_lens = {len(phoneme_ids)}")
-        return phoneme_ids
 
     def load_syn_mel(self, uttid):
         """ 根据 uttid 找出对应的合成Mel谱； """

@@ -40,6 +40,9 @@ pip install pypinyin
 pip install imageio
 pip install textgrid
 pip install tensorboard tensorboardX
+
+# vits 所需；需要先安装 Visual Studio
+pip install monotonic_align
 ```
 
 ---

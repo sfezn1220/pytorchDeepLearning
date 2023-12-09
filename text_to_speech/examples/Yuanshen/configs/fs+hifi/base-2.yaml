@@ -9,7 +9,7 @@ final_lr: 1e-5
 epochs: 500
 ckpt_path: "F:\\models_tts_fs+hifi\\base-2"
 
-train_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
+train_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.train.txt"
 valid_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
 test_data: "G:\\tts_train_data\\20231201_16K_Yuanshen34+Aishell3useful84_no-loudnorm\\4.Yuanshen+aishell3-useful84-no-loud-norm.test.txt"
 
@@ -32,7 +32,7 @@ pretrain_hifigan_file: "-1"  # 预训练模型
 start_discriminator_epoch: 50  # 第多少个epoch才开始迭代判别器
 
 use_syn_mel: True  # 是否使用合成Mel谱
-syn_mel_path: "F:\\models_tts_fs+hifi\\base-2\\fastspeech2-predict_epoch-0037"  # 合成Mel谱的路径
+syn_mel_path: "F:\\models_tts_fs+hifi\\base-2\\fastspeech2-predict_epoch-0046"  # 合成Mel谱的路径
 
 # 数据集的操作
 sample_rate: 16000  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；

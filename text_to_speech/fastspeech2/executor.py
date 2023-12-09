@@ -169,11 +169,17 @@ class FastSpeechExecutor(BaseExecutor):
                 energy_length = batch["energy_length"].to(self.device)
 
                 # 前向计算
-                mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                    = self.model(
-                    phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length,
-                    global_steps / self.max_steps
-                )
+                if forward_type.lower() in ["train", "valid"]:  # 模型训练、验证
+                    mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                        = self.model(
+                        phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length,
+                        global_steps / self.max_steps
+                    )
+                else:
+                    mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                        = self.model(
+                        phoneme_ids, spk_id,
+                    )
 
                 # loss
                 f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
