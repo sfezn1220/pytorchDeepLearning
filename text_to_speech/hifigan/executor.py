@@ -35,6 +35,8 @@ class HiFiGANExecutor(BaseExecutor):
         train_data_conf = copy.deepcopy(self.trainer_conf)
         valid_data_conf = copy.deepcopy(self.trainer_conf)
         valid_data_conf['shuffle'] = False
+        valid_data_conf['use_raw_mel'] = False
+        valid_data_conf['use_syn_mel'] = True
 
         self.sample_rate = train_data_conf['sample_rate']
 

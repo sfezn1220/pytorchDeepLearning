@@ -33,11 +33,49 @@ class FastSpeechDataList(TTSBaseDataList):
         assert model_type.lower() in ["acoustic model", "vocoder"]
         self.model_type = model_type.lower()  # 声学模型 or 声码器
 
+        self.use_raw_mel = conf['use_raw_mel'] if self.model_type == "vocoder" else True   # 是否使用原始Mel谱
+
         self.use_syn_mel = conf['use_syn_mel'] if self.model_type == "vocoder" else False   # 是否使用合成Mel谱
         self.syn_mel_path = conf['syn_mel_path']  # 合成Mel谱的路径
 
+        self.syn_or_raw_mel()  # 判断是使用原始Mel谱，还是合成Mel谱，还是两个都使用；
+
         if self.model_type == "acoustic model":  # 只有声学模型需要MFA对齐结果
             self.get_mfa_results()  # 读取duration信息
+
+    def __iter__(self):
+        """ 模型加载数据集的入口； """
+        if self.shuffle is True:
+            random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
+
+        for data in self.data_list:
+            (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
+             data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
+
+            if data['mel_type'] == "syn":
+                data['mel'] = self.load_syn_mel(data['uttid'])
+                if data['mel'] is None:
+                    continue
+
+            data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
+            yield data
+
+    def syn_or_raw_mel(self):
+        """ 判断是使用原始Mel谱，还是合成Mel谱，还是两个都使用； """
+        new_data_list = []
+        for data in tqdm.tqdm(self.data_list):
+            if self.use_raw_mel is True and self.use_syn_mel is False:  # 只使用原始Mel谱
+                data['mel_type'] = "raw"
+            elif self.use_raw_mel is False and self.use_syn_mel is True:  # 只使用合成Mel谱
+                data['mel_type'] = "syn"
+            elif self.use_raw_mel is True and self.use_syn_mel is True:  # 同时使用原始Mel谱、合成Mel谱
+                data['mel_type'] = "raw"
+                data_copy = copy.deepcopy(data)
+                data_copy['mel_type'] = "syn"
+                new_data_list.append(data_copy)
+            new_data_list.append(data)
+        self.data_list = new_data_list
+        return
 
     def get_mfa_results(self):
         """从MFA对齐结果中，读取duration信息；"""
@@ -161,23 +199,6 @@ class FastSpeechDataList(TTSBaseDataList):
                              f"需要增大 self.input_max_length .")
 
         return syn_mel
-
-    def __iter__(self):
-        """ 模型加载数据集的入口； """
-        if self.shuffle is True:
-            random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
-
-        for data in self.data_list:
-            (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
-             data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
-
-            if data['mel_type'] == "syn":
-                data['mel'] = self.load_syn_mel(data['uttid'])
-                if data['mel'] is None:
-                    continue
-
-            data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
-            yield data
 
 
 def get_tts_dataloader(

@@ -8,9 +8,9 @@ import pyworld as pw
 from scipy.interpolate import interp1d
 
 
-class AudioFeatureExtractor():
+class AudioFeatureExtractor:
     def __init__(self, conf: Dict):
-        """ 提取语音数据的特征，Mel谱、F0等； """
+        """ 提取语音数据的特征，Mel谱、F0等；基于CPU librosa库； """
         self.sample_rate = conf['sample_rate']  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
         self.hop_size = conf['hop_size']  # 每多少个点计算一次FFT；需要能被 sample_rate 整除；
         self.fft_size = conf['fft_size']
@@ -24,12 +24,13 @@ class AudioFeatureExtractor():
     def forward_mel_f0_energy(self, audio_path: str):
         """ FastSpeech 声学模型提取特征的入口； """
         audio = self.load_audio(audio_path)
-        return [
-            audio,
-            self.gen_mel(audio),
-            self.gen_f0(audio),
-            self.gen_energy(audio),
+        res = [
+            audio,                  # [time, ]
+            self.gen_mel(audio),     # [frames, num_mel=80]
+            self.gen_f0(audio),      # [frames, ]
+            self.gen_energy(audio),  # [frames, ]
         ]
+        return res
 
     def load_audio(self, audio_path: str) -> np.array:
         """ 读取语音数据；如果和预设的采样率不一致，就会重采样； """
@@ -119,3 +120,5 @@ class AudioFeatureExtractor():
         spec = self.gen_spec(audio)
         energy = np.sqrt(np.sum(spec ** 2, axis=0))
         return energy
+
+

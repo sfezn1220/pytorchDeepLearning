@@ -91,11 +91,6 @@ class TTSBaseDataList(BaseDataList):
                 data['mel_type'] = "raw"
                 data_list.append(data)
 
-                # if self.use_syn_mel is True:  # 如果使用合成谱，就复制一份数据；
-                #     data_copy = copy.deepcopy(data)
-                #     data_copy['mel_type'] = "syn"
-                #     data_list.append(data_copy)
-
         print(f"读取到语音数据：{len(data_list)}条。")
         # print(f"注意 use_syn_mel is {self.use_syn_mel}.")
         return data_list

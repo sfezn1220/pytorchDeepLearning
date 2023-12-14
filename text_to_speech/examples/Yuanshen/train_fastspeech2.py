@@ -15,9 +15,9 @@ def main():
         conf_file=f"./configs/fs+hifi/base-2.yaml",
     )
 
-    # trainer.run()
+    trainer.run()
 
-    trainer.forward_one_epoch(forward_type="gen_spec")
+    # trainer.forward_one_epoch(forward_type="gen_spec")
 
     return
 
