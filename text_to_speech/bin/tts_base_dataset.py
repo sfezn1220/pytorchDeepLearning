@@ -9,7 +9,10 @@ import torch
 from bin.base_dataset import BaseDataList
 
 from text_to_speech.text_precess import TextFrontEnd  # 文本前端模型
-from text_to_speech.utils.gen_feature import AudioFeatureExtractor  # 提取语音特征的模块
+from text_to_speech.utils.gen_feature import (
+    AudioFeatureExtractor,  # 提取语音特征的模块
+    AudioFeatureExtractorTorch,  # 提取语音特征的模块
+)
 
 
 class TTSBaseDataList(BaseDataList):
@@ -33,7 +36,8 @@ class TTSBaseDataList(BaseDataList):
         self.mel_f_min = conf['mel_f_min']  # Mel谱频率的最小值
         self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
 
-        self.feature_extractor = AudioFeatureExtractor(conf)  # 提取语音特征的模块
+        # self.feature_extractor = AudioFeatureExtractor(conf)  # 提取语音特征的模块
+        self.feature_extractor = AudioFeatureExtractorTorch(conf)  # 提取语音特征的模块
 
         self.text_processor = TextFrontEnd(phoneme_map_file=conf['phoneme_map'])  # 文本前端模型
 

@@ -132,36 +132,36 @@ class FastSpeechDataList(TTSBaseDataList):
         mel = mel.transpose(0, 1)  # -> [channel=80, time]
         mel_length = mel.shape[1]  # MEL谱长度
         # get mask
-        mel_mask = torch.ones_like(mel, dtype=torch.float32)
+        mel_mask = torch.ones_like(mel, dtype=torch.float32, device=mel.device)
         # padding
         if mel.shape[1] < self.input_max_length:
-            zeros_pad = torch.zeros([80, self.input_max_length - mel.shape[1]], dtype=torch.float32)
+            zeros_pad = torch.zeros([80, self.input_max_length - mel.shape[1]], dtype=torch.float32, device=mel.device)
             mel = torch.concat([mel, zeros_pad], dim=1)
-            mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32)
+            mask_zeros = torch.zeros_like(zeros_pad, dtype=torch.float32, device=mel.device)
             mel_mask = torch.concat([mel_mask, mask_zeros], dim=1)
         elif mel.shape[1] > self.input_max_length:
             mel = mel[:, self.input_max_length]
             mel_mask = mel_mask[:, self.input_max_length]
 
         # get F0
-        f0 = np.log(np.maximum(f0, 1e-10))
         f0 = torch.tensor(f0, dtype=torch.float32)
+        f0 = torch.log(torch.maximum(f0, torch.tensor(1e-10, dtype=torch.float32)))
         f0_length = len(f0)
         # padding
         if len(f0) < self.input_max_length:
-            zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32)
+            zeros_pad = torch.zeros([self.input_max_length - len(f0)], dtype=torch.float32, device=f0.device)
             f0 = torch.concat([f0, zeros_pad], dim=0)
             f0 *= mel_mask[0, :]
         elif len(f0) > self.input_max_length:
             f0 = f0[:self.input_max_length]
 
         # get energy
-        energy = np.log(np.maximum(energy, 1e-10))
         energy = torch.tensor(energy, dtype=torch.float32)
+        energy = torch.log(torch.maximum(energy, torch.tensor(1e-10, dtype=torch.float32)))
         energy_length = len(energy)
         # padding
         if len(energy) < self.input_max_length:
-            zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32)
+            zeros_pad = torch.zeros([self.input_max_length - len(energy)], dtype=torch.float32, device=energy.device)
             energy = torch.concat([energy, zeros_pad], dim=0)
             energy *= mel_mask[0, :]
         elif len(energy) > self.input_max_length:
@@ -171,7 +171,7 @@ class FastSpeechDataList(TTSBaseDataList):
         audio = torch.tensor(audio, dtype=torch.float32)
         seconds = len(audio) / self.sample_rate  # 语音时长，秒
         if len(audio) < self.input_max_length * self.hop_size:
-            zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32)
+            zeros_pad = torch.zeros([self.input_max_length * self.hop_size - len(audio)], dtype=torch.float32, device=audio.device)
             audio = torch.concat([audio, zeros_pad], dim=0)
         elif len(audio) > self.input_max_length * self.hop_size:
             audio = audio[:self.input_max_length * self.hop_size]
