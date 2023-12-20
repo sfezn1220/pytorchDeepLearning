@@ -36,8 +36,10 @@ class TTSBaseDataList(BaseDataList):
         self.mel_f_min = conf['mel_f_min']  # Mel谱频率的最小值
         self.mel_f_max = conf['mel_f_max']  # Mel谱频率的最大值
 
-        # self.feature_extractor = AudioFeatureExtractor(conf)  # 提取语音特征的模块
-        self.feature_extractor = AudioFeatureExtractorTorch(conf)  # 提取语音特征的模块
+        self.feature_extractor = AudioFeatureExtractor(conf)  # 提取语音特征的模块
+        # self.feature_extractor = AudioFeatureExtractorTorch(conf)  # 提取语音特征的模块
+
+        self.features_cache_dir = os.path.join(conf["ckpt_path"], "fastspeech2-features")  # npy格式的特征保存在这里
 
         self.text_processor = TextFrontEnd(phoneme_map_file=conf['phoneme_map'])  # 文本前端模型
 

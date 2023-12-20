@@ -1,5 +1,26 @@
 """关于字典处理的一些工具脚本；"""
 
+import numpy as np
+
+
+def dict2numpy(dic):
+    """ 将字典型变量，转换为 np.array """
+    dic_list = []
+    for item in dic:
+        dic_list.append([item, dic[item]])
+    res_arr = np.array(dic_list, dtype=object)
+    return res_arr
+
+
+def numpy2dict(arr: np.array):
+    """ 将字典型变量转换成的 np.array，再转换回字典 """
+    res_dic = {}
+    for pair in arr:
+        item = pair[0]
+        value = pair[1]
+        res_dic[item] = value
+    return res_dic
+
 
 def dic_sort(dic, reverse=True):
     """

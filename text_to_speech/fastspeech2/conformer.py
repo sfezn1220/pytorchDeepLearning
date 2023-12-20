@@ -1,7 +1,9 @@
 """ FastSpeech2 声学模型的 Conformer 编解码器； """
 
+import numpy as np
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast
 
 from text_to_speech.utils.layer_norm import LayerNorm
 
@@ -121,10 +123,11 @@ class MultiHeadSelfAttention(nn.Module):
         residual = nn.Identity()(x)
         x = self.layer_norm(x)
         # self-attention
-        query, key, value = self.calculate_qkv(x)
-        position_embedding = self.get_position_embedding(x)
-        attention_score = self.calculate_matrix(position_embedding, query, key)
-        x = self.calculate_masked_attention_score(attention_score, mask, value)
+        with autocast(enabled=False):
+            query, key, value = self.calculate_qkv(x)
+            position_embedding = self.get_position_embedding(x)
+            attention_score = self.calculate_matrix(position_embedding, query, key)
+            x = self.calculate_masked_attention_score(attention_score, mask, value)
         x = self.dropout(x)
         x = x.clone() + residual
         return x
@@ -209,6 +212,11 @@ class MultiHeadSelfAttention(nn.Module):
         query_with_u = query + self.bias_u  # [batch, head_nums, time, head_size]
         query_with_v = query + self.bias_v  # [batch, head_nums, time, head_size]
 
+        query_with_u = query_with_u.to(torch.float32)  # fp16 -> fp32
+        query_with_v = query_with_v.to(torch.float32)
+        key = key.to(torch.float32)
+        position_embedding = position_embedding.to(torch.float32)
+
         matrix_ac = torch.matmul(query_with_u, key.transpose(2, 3))  # [batch, head_nums, time, time]
         matrix_bd = torch.matmul(query_with_v, position_embedding.transpose(2, 3))  # [batch, head_nums, time, time*2-1]
         matrix_bd = self.relative_shift(matrix_bd)  # [batch, head_nums, time, time]
@@ -230,11 +238,16 @@ class MultiHeadSelfAttention(nn.Module):
         mask = mask.unsqueeze(dim=-1)  # [batch, 1, time, 1]
         mask = mask.eq(0)
 
-        attention_score = attention_score.masked_fill(mask, -1e34)  # 将mask=0位置的分数，设置为很小的值
+        dtype = str(attention_score.dtype).split(".")[-1]
+        min_value = float(np.finfo(dtype).min)
+        attention_score = attention_score.masked_fill(mask, min_value)  # 将mask=0位置的分数，设置为很小的值
 
         attention_probs = torch.softmax(attention_score, dim=-1)
         attention_probs = attention_probs.masked_fill(mask, 0.0)  # 将mask=0位置的概率，设置为零
         attention_probs = self.dropout(attention_probs)
+
+        attention_probs = attention_probs.to(torch.float32)
+        value = value.to(torch.float32)
 
         outputs = torch.matmul(attention_probs, value)  # [batch, head_nums, time, head_size]
         outputs = outputs.transpose(1, 2)

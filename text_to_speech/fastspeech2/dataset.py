@@ -14,6 +14,7 @@ from text_to_speech.bin.tts_base_dataset import TTSBaseDataList
 
 from text_to_speech.utils.read_textgrid import read_all_textgrid, read_spk_uttid_textgrid
 from text_to_speech.utils import str2bool  # 字符串转布尔值
+from text_to_speech.utils import dict2numpy, numpy2dict  # 字典和np.array的转换
 
 
 class FastSpeechDataList(TTSBaseDataList):
@@ -49,16 +50,43 @@ class FastSpeechDataList(TTSBaseDataList):
             random.Random(self.epoch).shuffle(self.data_list)  # 按照epoch设置random的随机种子，保证可复现
 
         for data in self.data_list:
-            (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
-             data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
+            uttid = data["uttid"]
+            load_path = os.path.join(self.features_cache_dir, str(uttid) + ".npz")
+            new_data_np = np.load(load_path, allow_pickle=True)["data"]
+            new_data = numpy2dict(new_data_np)
+            new_data['phonemes'] = ""
+            del new_data_np
+            yield new_data
 
-            if data['mel_type'] == "syn":
-                data['mel'] = self.load_syn_mel(data['uttid'])
-                if data['mel'] is None:
-                    continue
+        # 旧的生成方式，占用显存过多
+        # for data in self.data_list:
+        #     (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
+        #      data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
 
-            data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
-            yield data
+        #     if data['mel_type'] == "syn":
+        #         data['mel'] = self.load_syn_mel(data['uttid'])
+        #         if data['mel'] is None:
+        #             continue
+
+        #     data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
+        #     yield data
+
+    def save_features(self):
+        # 保存路径
+        save_dir = self.features_cache_dir
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+
+        # 开始保存数据
+        for data in tqdm.tqdm(self.data_list):
+            uttid = data['uttid']
+            (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'], data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
+
+            data_np = dict2numpy(data)  # 转换成特定格式的np.array
+
+            save_path = os.path.join(save_dir, str(uttid) + ".npz")
+            np.savez(file=save_path, data=data_np)
+        return
 
     def syn_or_raw_mel(self):
         """ 判断是使用原始Mel谱，还是合成Mel谱，还是两个都使用； """

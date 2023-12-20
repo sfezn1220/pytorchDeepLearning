@@ -5,6 +5,7 @@ import shutil
 import copy
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast
 from contextlib import nullcontext
 import time
 import tqdm
@@ -65,6 +66,7 @@ class FastSpeechExecutor(BaseExecutor):
         )
 
         # 合成的Mel谱的路径
+        self.features_dir_name = os.path.join(self.ckpt_path, self.name + 'features')
         self.gen_audios_dir_name = lambda x: os.path.join(self.ckpt_path, self.name + 'predict_epoch-{:04d}'.format(x))
 
         # 加载预训练模型
@@ -141,6 +143,8 @@ class FastSpeechExecutor(BaseExecutor):
         else:
             raise ValueError(f'forward_type must in ["train", "valid", "gen_spec"].')
 
+        scaler = torch.cuda.amp.GradScaler()  # 半精度训练
+
         with tag():
             epoch_total_loss = torch.tensor([0.0]).to(self.device)
             epoch_f0_loss = torch.tensor([0.0]).to(self.device)
@@ -170,36 +174,49 @@ class FastSpeechExecutor(BaseExecutor):
 
                 # 前向计算
                 if forward_type.lower() in ["train", "valid"]:  # 模型训练、验证
-                    mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                        = self.model(
-                        phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length,
-                        global_steps / self.max_steps
-                    )
+                    with autocast(enabled=False):
+                        mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                            = self.model(
+                                phoneme_ids, spk_id, duration_gt, f0_gt, energy_gt, mel_length, f0_length, energy_length,
+                                global_steps / self.max_steps
+                            )
                 else:
-                    mel_after, mel_before, f0_predict, energy_predict, duration_predict \
-                        = self.model(
-                        phoneme_ids, spk_id,
-                    )
+                    with autocast(enabled=False):
+                        mel_after, mel_before, f0_predict, energy_predict, duration_predict \
+                            = self.model(
+                                phoneme_ids, spk_id,
+                            )
+
+                # 保存验证集的合成Mel谱
+                if forward_type.lower() in ["valid"]:  # 模型验证
+                    self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt, save_mel=True, save_numpy=False)
+                elif forward_type.lower() in ["gen_spec"]:  # 合成Mel谱
+                    self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt, save_mel=True, save_numpy=True)
+                    continue
 
                 # loss
-                f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
-                energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
+                if forward_type.lower() in ["train", "valid"]:  # 模型训练 or 验证
+                    with autocast(enabled=False):
+                        f0_loss = calculate_1d_loss(f0_gt, f0_predict, "MSE")
+                        energy_loss = calculate_1d_loss(energy_gt, energy_predict, "MSE")
 
-                duration_gt = torch.log(duration_gt + 1)
-                duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
+                        duration_gt = torch.log(duration_gt + 1)
+                        duration_loss = calculate_1d_loss(duration_gt, duration_predict, "MSE")
 
-                mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
-                mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
+                        mel_before_loss = calculate_2d_loss(mel_gt, mel_before, "MAE")
+                        mel_after_loss = calculate_2d_loss(mel_gt, mel_after, "MAE")
 
-                total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
+                        total_loss = f0_loss + energy_loss + duration_loss + mel_before_loss + mel_after_loss
 
                 # 反向传播
                 if forward_type.lower() in ["train"]:  # 模型训练
-                    total_loss.backward()
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-                    # end of step
-                    self.lr_scheduler.step()
+                    with autocast(enabled=False):
+                        # scaler.scale(total_loss).backward()
+                        self.optimizer.step()
+                        # scaler.step(self.optimizer)
+                        self.optimizer.zero_grad()
+                        self.lr_scheduler.step()
+                        # scaler.update()
 
                 if forward_type.lower() in ["train", "valid"]:  # 模型训练 or 验证
                     epoch_total_loss += total_loss.item()
@@ -231,14 +248,6 @@ class FastSpeechExecutor(BaseExecutor):
                            f"")
                     print(log)
                     self.write_training_log(log, "a")
-
-                # 保存验证集的合成Mel谱
-                if forward_type.lower() in ["valid"]:  # 模型验证
-                    self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt,
-                                         save_mel=True, save_numpy=False)
-                elif forward_type.lower() in ["gen_spec"]:  # 合成Mel谱
-                    self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt,
-                                         save_mel=True, save_numpy=True)
 
         # end of epoch
         epoch_total_loss /= batch_per_epoch

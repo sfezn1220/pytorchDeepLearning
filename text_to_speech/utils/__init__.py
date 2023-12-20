@@ -15,6 +15,7 @@ from .audio_process import copy_and_rename   # 复制、转换成 wav 格式；
 
 """处理字典"""
 from .dict_process import dic_sort  # 对字典排序、展示
+from .dict_process import dict2numpy, numpy2dict  # 字典和np.array的转换
 
 """处理字符串"""
 from .str2bool import str2bool  # 字符串 转 布尔值
