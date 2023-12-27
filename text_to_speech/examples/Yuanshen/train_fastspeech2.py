@@ -14,12 +14,13 @@ def main():
         conf_file=f"./configs/fs+hifi/base-2.yaml",
     )
 
-    trainer.train_data_loader.dataset.save_features()
-    trainer.valid_data_loader.dataset.save_features()
+    # trainer.train_data_loader.dataset.save_features()
+    # trainer.valid_data_loader.dataset.save_features()
 
-    trainer.run()
+    # trainer.run()
 
-    # trainer.forward_one_epoch(forward_type="gen_spec")
+    trainer.forward_one_epoch(forward_type="gen_spec_train")
+    trainer.forward_one_epoch(forward_type="gen_spec_valid")
 
     return
 

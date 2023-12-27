@@ -135,13 +135,18 @@ class FastSpeechExecutor(BaseExecutor):
             flag = "valid"
             tag = torch.no_grad
             data_loader = self.valid_data_loader
-        elif forward_type.lower() in ["gen_spec"]:  # 合成Mel谱
+        elif forward_type.lower() in ["gen_spec_train"]:  # 合成训练集的Mel谱
             self.model.eval()
-            flag = "gen_spec"
+            flag = "gen_spec_train"
             tag = torch.no_grad
             data_loader = self.train_data_loader
+        elif forward_type.lower() in ["gen_spec_valid"]:  # 合成验证集的Mel谱
+            self.model.eval()
+            flag = "gen_spec_valid"
+            tag = torch.no_grad
+            data_loader = self.valid_data_loader
         else:
-            raise ValueError(f'forward_type must in ["train", "valid", "gen_spec"].')
+            raise ValueError(f'forward_type must in ["train", "valid", "gen_spec_train"], "gen_spec_valid"].')
 
         scaler = torch.cuda.amp.GradScaler()  # 半精度训练
 
@@ -190,8 +195,10 @@ class FastSpeechExecutor(BaseExecutor):
                 # 保存验证集的合成Mel谱
                 if forward_type.lower() in ["valid"]:  # 模型验证
                     self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt, save_mel=True, save_numpy=False)
-                elif forward_type.lower() in ["gen_spec"]:  # 合成Mel谱
+                elif forward_type.lower() in ["gen_spec_train", "gen_spec_valid"]:  # 合成Mel谱
                     self.save_mel_images(uttids=uttids, mel_gen=mel_after, mel_gt=mel_gt, save_mel=True, save_numpy=True)
+                    log = f"{flag}: epoch[{self.cur_epoch}], steps[{batch_idx}/{batch_per_epoch}]"
+                    print(log)
                     continue
 
                 # loss

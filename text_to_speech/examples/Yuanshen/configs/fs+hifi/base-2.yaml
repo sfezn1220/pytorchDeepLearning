@@ -2,7 +2,7 @@
 
 gpu: 0
 batch_size_fastspeech2: 20  # for fastspeech2, max 20
-batch_size_hifigan: 2  # for hifi-gan, max 4
+batch_size_hifigan: 4  # for hifi-gan, max **
 
 lr: 2e-4
 final_lr: 1e-5
@@ -33,7 +33,7 @@ start_discriminator_epoch: 50  # 第多少个epoch才开始迭代判别器
 
 use_raw_mel: True  # 是否使用原始Mel谱
 use_syn_mel: True  # 是否使用合成Mel谱
-syn_mel_path: "F:\\models_tts_fs+hifi\\base-2\\fastspeech2-predict_epoch-0046"  # 合成Mel谱的路径
+syn_mel_path: "F:\\models_tts_fs+hifi\\base-2\\fastspeech2-predict_epoch-0101"  # 合成Mel谱的路径
 
 # 数据集的操作
 sample_rate: 16000  # 采样率，默认 16K Hz，如果输入数据不是这个采样率，就会重采样；
@@ -47,7 +47,7 @@ mel_f_min: 0  # Mel谱的频率的最小值
 mel_f_max: 8000  # Mel谱的频率的最大值
 
 shuffle: True
-input_max_seconds: 8  # 输入音频的最大长度/秒，默认是 12秒
+input_max_seconds: 12  # 输入音频的最大长度/秒，默认是 12秒
 input_max_tokens: 196  # 输入音素的最大长度/个，默认是 256个字符
 
 phonemes_size: 213  # 音素的数量

@@ -52,24 +52,20 @@ class FastSpeechDataList(TTSBaseDataList):
         for data in self.data_list:
             uttid = data["uttid"]
             load_path = os.path.join(self.features_cache_dir, str(uttid) + ".npz")
+            if not os.path.exists(load_path):
+                print(f"Skip non-existing npz file: {load_path}")
+                continue
             new_data_np = np.load(load_path, allow_pickle=True)["data"]
             new_data = numpy2dict(new_data_np)
             new_data['phonemes'] = ""
             del new_data_np
+
+            if data['mel_type'] == "syn":
+                data['mel'] = self.load_syn_mel(data['uttid'])
+                if data['mel'] is None:
+                    continue
+
             yield new_data
-
-        # 旧的生成方式，占用显存过多
-        # for data in self.data_list:
-        #     (data['mel'], data['f0'], data['energy'], data['audio'], data['mel_mask'], data['seconds'],
-        #      data['mel_length'], data['f0_length'], data['energy_length']) = self.get_features(data['path'])
-
-        #     if data['mel_type'] == "syn":
-        #         data['mel'] = self.load_syn_mel(data['uttid'])
-        #         if data['mel'] is None:
-        #             continue
-
-        #     data['phonemes'] = ""  # 置空，否则还需要将音素 padding 至相同长度；
-        #     yield data
 
     def save_features(self):
         # 保存路径
@@ -86,6 +82,8 @@ class FastSpeechDataList(TTSBaseDataList):
 
             save_path = os.path.join(save_dir, str(uttid) + ".npz")
             np.savez(file=save_path, data=data_np)
+
+            del data_np
         return
 
     def syn_or_raw_mel(self):

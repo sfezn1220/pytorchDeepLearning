@@ -5,6 +5,7 @@ import shutil
 import copy
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast
 from contextlib import nullcontext
 import time
 import tqdm
@@ -183,6 +184,9 @@ class HiFiGANExecutor(BaseExecutor):
         else:
             raise ValueError(f'forward_type must in ["train", "valid"].')
 
+        fp16_run = False
+        scaler = torch.cuda.amp.GradScaler(enabled=fp16_run)  # 半精度训练
+
         with tag():
             epoch_total_loss = torch.tensor([0.0]).to(self.device)
             epoch_sc_loss = torch.tensor([0.0]).to(self.device)
@@ -205,20 +209,22 @@ class HiFiGANExecutor(BaseExecutor):
                 audio_gt = batch['audio'].to(self.device)
 
                 # 前向计算
-                audio_gen, features_gen = self.model(mel_gt)
-                features_gt = self.model.forward_discriminator(audio_gt)
+                with autocast(enabled=fp16_run):
+                    audio_gen, features_gen = self.model(mel_gt)
+                    features_gt = self.model.forward_discriminator(audio_gt)
 
                 # loss
-                total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss = self.cal_loss(audio_gt, audio_gen, features_gt, features_gen)
+                with autocast(enabled=fp16_run):
+                    total_loss, sc_loss, mag_loss, adv_loss, fm_loss, real_loss, fake_loss = self.cal_loss(audio_gt, audio_gen, features_gt, features_gen)
 
                 # 反向传播
                 if forward_type.lower() in ["train"]:  # 模型训练
-                    total_loss.backward()
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-
-                    # end of step
-                    self.lr_scheduler.step()
+                    with autocast(enabled=False):
+                        scaler.scale(total_loss).backward()
+                        scaler.step(self.optimizer)
+                        self.optimizer.zero_grad()
+                        self.lr_scheduler.step()
+                        scaler.update()
 
                 if forward_type.lower() in ["train", "valid"]:  # 模型训练 or 验证
                     epoch_total_loss += total_loss.item()
