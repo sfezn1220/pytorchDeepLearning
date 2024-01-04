@@ -11,12 +11,15 @@ def main():
     torch.cuda.set_per_process_memory_fraction(0.93, 0)
 
     trainer = JointTTS(
-        conf_file=f"./configs/fs+hifi/demo.yaml",
+        conf_file=f"./configs/fs+hifi/base-2.yaml",
         acoustic_model="fastspeech2",
         vocoder="hifigan",
     )
 
-    trainer.test()
+    trainer.test(
+        text="这是语音合成的效果。你觉得怎么样呢？你觉得像吗？点个赞呗！",
+        spk_id=15,
+    )
 
     return
 
