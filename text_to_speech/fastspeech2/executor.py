@@ -146,7 +146,7 @@ class FastSpeechExecutor(BaseExecutor):
             tag = torch.no_grad
             data_loader = self.valid_data_loader
         else:
-            raise ValueError(f'forward_type must in ["train", "valid", "gen_spec_train"], "gen_spec_valid"].')
+            raise ValueError(f'forward_type must in ["train", "valid", "gen_spec_train", "gen_spec_valid"].')
 
         scaler = torch.cuda.amp.GradScaler()  # 半精度训练
 

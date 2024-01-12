@@ -178,7 +178,7 @@ class BaseExecutor:
             return
 
         # 再看看有没有预训练模型：（self.cur_epoch < 0 表示 epoch 0 开始之前）
-        elif os.path.exists(self.pretrain_file):
+        elif self.pretrain_file is not None and os.path.exists(self.pretrain_file):
             model_dict = torch.load(self.pretrain_file)
             self.model.load_state_dict(model_dict["model_state_dict"])
             print(f"load pretrain: {os.path.basename(self.pretrain_file)}")
@@ -210,6 +210,10 @@ class BaseExecutor:
         if self.model is not None:
             self.load_ckpt_auto()
             self.cur_epoch = self.last_epoch
+
+        # 检查存储路径
+        if not os.path.exists(self.ckpt_path):
+            os.mkdir(self.ckpt_path)
 
         # 写入日志
         if self.last_epoch < 0:  # 从头开始训练
