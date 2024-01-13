@@ -12,7 +12,7 @@ from contextlib import nullcontext
 from bin.base_executor import BaseExecutor
 from image_classification.dataset import get_image_dataloader
 
-from image_classification.models import VGG16, ResNet152
+from image_classification.models import VGG16, ResNet152, DarkNet53
 
 
 class ImageClassificationExecutor(BaseExecutor):
@@ -61,9 +61,16 @@ class ImageClassificationExecutor(BaseExecutor):
         elif conf_basename.startswith("resnet"):
             self.model = ResNet152(self.trainer_conf).to(self.device)
             print("Use ResNet152 model.")
+        elif conf_basename.startswith("darknet"):
+            self.model = DarkNet53(self.trainer_conf).to(self.device)
+            print("Use DarkNet53 model.")
         else:
             raise ValueError(f"model name ERROR.")
-        # print(model)
+        # print(self.model)
+
+        # 统计参数量
+        total_params_cnt = sum(p.numel() for p in self.model.parameters())
+        print("模型参数量总计：%.2fM" % (total_params_cnt/1e6))
 
         # 优化器、交叉熵损失函数
         self.criterion = nn.CrossEntropyLoss()

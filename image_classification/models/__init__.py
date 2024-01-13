@@ -3,3 +3,5 @@
 from .ResNet import ResNet18, ResNet152
 
 from .vgg import VGG16
+
+from .DarkNet import DarkNet53

@@ -32,7 +32,6 @@ class ResidualBlock(nn.Module):
         self.mid_channel = in_out_channel // 2  # 中间结果的通道数
 
         self.block = self.get_residual_block()
-        self.final_act = nn.ReLU()
 
     def forward(self, x):
         residual = nn.Identity()(x)
@@ -61,73 +60,108 @@ class DarkNet53(nn.Module):
         self.n_classes = conf["n_classes"]  # 分类的类别数量
         self.in_channel = 3  # 输入图像的通道处，默认为RGB三通道
         self.input_shape = conf["input_shape"]  # 默认 [416, 416]
+        self.mid_channels = [32, 64, 128, 256, 512, 1024]
 
-        # TODO
         self.begin_block = self.get_begin_block()  # ResNet 模型的第一个模块
-        self.block_1 = self.get_residual_block(64, 64, num_blocks=2, down_sample=False)
-        self.block_2 = self.get_residual_block(64, 128, num_blocks=2, down_sample=True)
-        self.block_3 = self.get_residual_block(128, 256, num_blocks=2, down_sample=True)
-        self.block_4 = self.get_residual_block(256, 512, num_blocks=2, down_sample=True)
-        self.final_block = self.get_final_block(in_features=512)  # ResNet 模型的最后一个模块
+
+        self.down_sample_block_1 = self.get_down_sample_block(in_channel=self.mid_channels[0], out_channel=self.mid_channels[1])
+        self.block_1 = self.get_residual_block(in_out_channel=self.mid_channels[1], num_blocks=1)
+
+        self.down_sample_block_2 = self.get_down_sample_block(in_channel=self.mid_channels[1], out_channel=self.mid_channels[2])
+        self.block_2 = self.get_residual_block(in_out_channel=self.mid_channels[2], num_blocks=2)
+
+        self.down_sample_block_3 = self.get_down_sample_block(in_channel=self.mid_channels[2], out_channel=self.mid_channels[3])
+        self.block_3 = self.get_residual_block(in_out_channel=self.mid_channels[3], num_blocks=8)
+
+        self.down_sample_block_4 = self.get_down_sample_block(in_channel=self.mid_channels[3], out_channel=self.mid_channels[4])
+        self.block_4 = self.get_residual_block(in_out_channel=self.mid_channels[4], num_blocks=8)
+
+        self.down_sample_block_5 = self.get_down_sample_block(in_channel=self.mid_channels[4], out_channel=self.mid_channels[5])
+        self.block_5 = self.get_residual_block(in_out_channel=self.mid_channels[5], num_blocks=4)
+
+        self.final_block = self.get_final_block()  # DarkNet 模型的最后一个模块
 
     def forward(self, x):
         x = self.begin_block(x)
+
+        x = self.down_sample_block_1(x)
         x = self.block_1(x)
+
+        x = self.down_sample_block_2(x)
         x = self.block_2(x)
+
+        x = self.down_sample_block_3(x)
         x = self.block_3(x)
+
+        x = self.down_sample_block_4(x)
         x = self.block_4(x)
+
+        x = self.down_sample_block_5(x)
+        x = self.block_5(x)
+
         x = self.final_block(x)
         return x
 
+    @staticmethod
     def get_residual_block(
-            self,
-            in_channel,
-            out_channel,
+            in_out_channel,
             num_blocks=1,
-            down_sample=True,
     ):
-        """ ResNet的核心，包含多个残差模块；"""
+        """ DarkNet 核心的残差模块；"""
         blocks = nn.Sequential()
         for block_i in range(num_blocks):
-            if block_i == 0 and down_sample is True:
-                strides = 2
-            else:
-                strides = 1
-            if block_i != 0:
-                in_channel = out_channel
             blocks.append(
                 ResidualBlock(
-                    in_channel=in_channel,
-                    out_channel=out_channel,
-                    strides=strides
+                    in_out_channel=in_out_channel,
                 )
             )
+        return blocks
+
+    @staticmethod
+    def get_down_sample_block(
+            in_channel: int,
+            out_channel: int,
+    ):
+        """ DarkNet 的下采样模块，使用3*3卷积、不使用pooling层；"""
+        blocks = nn.Sequential()
+        blocks.append(
+            BasicBlock(
+                in_channel=in_channel,
+                out_channel=out_channel,
+                kernel_size=3,
+                stride=2,
+            )
+        )
         return blocks
 
     def get_begin_block(self):
         """ ResNet的第一个模块；"""
         layers = nn.Sequential()
-        layers.append(nn.Conv2d(self.in_channel, out_channels=64, kernel_size=7, stride=2, padding=3))
-        layers.append(nn.BatchNorm2d(64))
-        layers.append(nn.ReLU())
-        layers.append(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        layers.append(
+            BasicBlock(
+                in_channel=self.in_channel,
+                out_channel=self.mid_channels[0],
+                kernel_size=3,
+                stride=1,
+            )
+        )
         return layers
 
-    def get_final_block(self, in_features=512):
+    def get_final_block(self):
         """ ResNet的最后一个；"""
         layers = nn.Sequential()
         layers.append(nn.AdaptiveAvgPool2d((1, 1)))  # 无论输入尺寸是多少，输出尺寸都是[1, 1]
         layers.append(nn.Flatten())
-        layers.append(nn.Linear(in_features=in_features, out_features=self.n_classes))
+        layers.append(nn.Linear(in_features=self.mid_channels[-1], out_features=self.n_classes))
         return layers
 
 
 if __name__ == "__main__":
     conf = {
-        "n_classes": 170,
+        "n_classes": 160,
         "input_shape": [224, 224],
     }
 
-    model = ResNet18(conf)
+    model = DarkNet53(conf)
 
     print(model)
