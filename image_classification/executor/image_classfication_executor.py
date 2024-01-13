@@ -12,7 +12,7 @@ from contextlib import nullcontext
 from bin.base_executor import BaseExecutor
 from image_classification.dataset import get_image_dataloader
 
-from image_classification.models import VGG16, ResNet152, DarkNet53
+from image_classification.models import VGG16, ResNet152, ResNet18, DarkNet53
 
 
 class ImageClassificationExecutor(BaseExecutor):

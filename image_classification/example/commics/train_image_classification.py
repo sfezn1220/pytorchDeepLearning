@@ -24,6 +24,14 @@ def main():
 
     trainer.forward_one_epoch(forward_type="test")
 
+    trainer = ImageClassificationExecutor(
+        conf_file=f"./configs/darknet/darknet_ft1.yaml",
+    )
+
+    trainer.run()
+
+    trainer.forward_one_epoch(forward_type="test")
+
     return
 
 

@@ -1,17 +1,17 @@
 # darknet-53 模型的所有参数；
 
 gpu: 0
-lr: 2e-4
-final_lr: 1e-5
-batch_size: 32
+lr: 5e-5
+final_lr: 2e-6
+batch_size: 8
 epochs: 100
-ckpt_path: "F:\\models_images\\darknet53_base"
+ckpt_path: "F:\\models_images\\darknet53_ft1"
 
 train_data: "G:\\Images\\3.labeled_json_0923.train.txt"
 valid_data: "G:\\Images\\3.labeled_json_0923.valid.txt"
 test_data: "G:\\Images\\3.labeled_json_0923.test.txt"
 n_classes: 160
-input_shape: [224, 224]
+input_shape: [416, 416]
 
 max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
 
