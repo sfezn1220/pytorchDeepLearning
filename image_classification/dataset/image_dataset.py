@@ -1,11 +1,16 @@
 """ 定义：图像数据集；"""
+import os
+import tqdm
+
 import yaml
 import random
 import torch
 import cv2
+import numpy as np
 from typing import Dict
 
 from bin.base_dataset import BaseDataList
+from text_to_speech.utils import dict2numpy, numpy2dict  # 字典和np.array的转换
 
 from image_classification.utils import read_json_lists
 from torch.utils.data import DataLoader
@@ -33,12 +38,16 @@ class ImageDataList(BaseDataList):
         # 数据增强部分
         self.data_aug_transforms = self.get_data_aug_transforms()
 
+        # 图像先保存在这里，减少训练时的内存占用
+        self.images_cache_dir = os.path.join(conf["ckpt_path"], "images_cache_dir")  # npy格式的图像保存在这里
+
     def get_images_and_labels(self, data_list_file):
         """ 最开始的 读取 label 文件的操作；"""
         data_list = []
         for data in read_json_lists(data_list_file):
             data["label_id"] = torch.tensor(int(data["label_id"]))
             data["label_one_hot"] = F.one_hot(data["label_id"], self.n_classes).float()
+            data["basename"] = os.path.basename(data['path']).replace(".png", "")
             data_list.append(data)
         return data_list
 
@@ -49,10 +58,57 @@ class ImageDataList(BaseDataList):
         self.data_aug_transforms = self.get_data_aug_transforms()  # 数据增强
 
         for data in self.data_list:
-            img = cv2.imread(data["path"])
+            basename = data["basename"]
+            # 先看有没有本地缓存数据
+            load_path = os.path.join(self.images_cache_dir, str(basename) + ".npz")
+            if os.path.exists(load_path):
+                new_data_np = np.load(load_path, allow_pickle=True)["data"]
+                data = numpy2dict(new_data_np)
+                img = data["image"]
+                del new_data_np
+            else:
+                print(f"Ignore non-existing npz file and use opencv to read.: {load_path}")
+                img = cv2.imread(data["path"])
+
             img = self.data_aug_transforms(img)  # 尺寸变为 224 * 224、转换成 tensor；
             data["image"] = img
             yield data
+
+    def save_images(self):
+        # 保存路径
+        save_dir = self.images_cache_dir
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+
+        # 去重
+        basename_list = []
+
+        # 开始保存数据
+        print(f"开始保存 {self.data_type} 集的 numpy格式的训练数据：")
+        for data in tqdm.tqdm(self.data_list):
+            basename = data["basename"]
+            # 查重
+            if basename not in basename_list:
+                basename_list.append(basename)
+            else:
+                print(f"重复的 basename: {basename}")
+
+            # 如果已经保存了，就不再重复计算了
+            save_path = os.path.join(save_dir, str(basename) + ".npz")
+            if os.path.exists(save_path):
+                continue
+
+            img = cv2.imread(data["path"])
+            data["image"] = img
+
+            data_np = dict2numpy(data)  # 转换成特定格式的np.array
+            np.savez(file=save_path, data=data_np)
+
+            del data_np
+            del data
+
+        del basename_list
+        return
 
     def get_data_aug_transforms(self):
         """定义：数据增强函数；"""

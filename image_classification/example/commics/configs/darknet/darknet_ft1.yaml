@@ -1,10 +1,10 @@
 # darknet-53 模型的所有参数；
 
 gpu: 0
-lr: 5e-5
-final_lr: 2e-6
-batch_size: 8
-epochs: 100
+lr: 2e-4
+final_lr: 1e-5
+batch_size: 32
+epochs: 50
 ckpt_path: "F:\\models_images\\darknet53_ft1"
 
 train_data: "G:\\Images\\3.labeled_json_0923.train.txt"

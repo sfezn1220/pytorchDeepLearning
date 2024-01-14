@@ -71,7 +71,7 @@ class BaseExecutor:
         self.states_save_path = lambda x: os.path.join(self.ckpt_path, self.states_name_prefix + '-{:04d}.pth'.format(x))
 
         # 加载预训练模型
-        self.init_pretrain_model()
+        # self.init_pretrain_model()  # 这条命令只在继承后的类中执行、不在这里执行
 
     def write_training_log(self, logs: str, mode: str = "a"):
         """ 记录下日志 """
@@ -217,6 +217,7 @@ class BaseExecutor:
 
         # 写入日志
         if self.last_epoch < 0:  # 从头开始训练
+            print(f"从头开始训练：self.last_epoch = {self.last_epoch}")
             self.write_training_log("start training...\n", "w")
 
         return
