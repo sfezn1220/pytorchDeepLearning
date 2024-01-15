@@ -21,8 +21,9 @@ def main():
 
     # trainer.train_data_loader.dataset.save_images()
     # trainer.valid_data_loader.dataset.save_images()
+    trainer.test_data_loader.dataset.save_images()
 
-    trainer.run()
+    # trainer.run()
 
     trainer.forward_one_epoch(forward_type="test")
 
