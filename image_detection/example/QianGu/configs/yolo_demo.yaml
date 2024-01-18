@@ -1,0 +1,21 @@
+# YOLO v3 模型的所有参数；
+
+gpu: 0
+lr: 1e-4
+final_lr: 1e-5
+batch_size: 32
+epochs: 50
+ckpt_path: "F:\\models_images_detect\\yolov3_demo"
+
+train_data: "G:\\Images_QianGu\\4.labeled_norm"
+valid_data: "G:\\Images_QianGu\\4.labeled_norm"
+test_data: "G:\\Images_QianGu\\4.labeled_norm"
+n_classes: 160
+input_shape: [416, 416]
+
+max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
+
+log_every_steps: 5  # 每多少个step展示一次日志
+
+# 数据集的操作
+shuffle: True

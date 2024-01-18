@@ -65,42 +65,60 @@ class DarkNet53(nn.Module):
         self.begin_block = self.get_begin_block()  # ResNet 模型的第一个模块
 
         self.down_sample_block_1 = self.get_down_sample_block(in_channel=self.mid_channels[0], out_channel=self.mid_channels[1])
-        self.block_1 = self.get_residual_block(in_out_channel=self.mid_channels[1], num_blocks=1)
+        self.residual_block_1 = self.get_residual_block(in_out_channel=self.mid_channels[1], num_blocks=1)
 
         self.down_sample_block_2 = self.get_down_sample_block(in_channel=self.mid_channels[1], out_channel=self.mid_channels[2])
-        self.block_2 = self.get_residual_block(in_out_channel=self.mid_channels[2], num_blocks=2)
+        self.residual_block_2 = self.get_residual_block(in_out_channel=self.mid_channels[2], num_blocks=2)
 
         self.down_sample_block_3 = self.get_down_sample_block(in_channel=self.mid_channels[2], out_channel=self.mid_channels[3])
-        self.block_3 = self.get_residual_block(in_out_channel=self.mid_channels[3], num_blocks=8)
+        self.residual_block_3 = self.get_residual_block(in_out_channel=self.mid_channels[3], num_blocks=8)
 
         self.down_sample_block_4 = self.get_down_sample_block(in_channel=self.mid_channels[3], out_channel=self.mid_channels[4])
-        self.block_4 = self.get_residual_block(in_out_channel=self.mid_channels[4], num_blocks=8)
+        self.residual_block_4 = self.get_residual_block(in_out_channel=self.mid_channels[4], num_blocks=8)
 
         self.down_sample_block_5 = self.get_down_sample_block(in_channel=self.mid_channels[4], out_channel=self.mid_channels[5])
-        self.block_5 = self.get_residual_block(in_out_channel=self.mid_channels[5], num_blocks=4)
+        self.residual_block_5 = self.get_residual_block(in_out_channel=self.mid_channels[5], num_blocks=4)
 
         self.final_block = self.get_final_block()  # DarkNet 模型的最后一个模块
 
-    def forward(self, x):
+    def forward(self, x, model_type: str = "classification"):
+        assert model_type in ["classification", "yolo"], f"DarkNet53 只能用于分类任务和YOLOv3任务；"
+
+        yolo_outputs = []
+
+        # 第零个卷积：channel: 3 -> 32，图像尺寸 416*416
         x = self.begin_block(x)
 
+        # 第一个下采样 + 残差模块，图像尺寸下降一半，即 228*228，channel -> 64
         x = self.down_sample_block_1(x)
-        x = self.block_1(x)
+        x = self.residual_block_1(x)
 
+        # 第二个下采样 + 残差模块，图像尺寸下降至 1/4，即 124*124，channel -> 128
         x = self.down_sample_block_2(x)
-        x = self.block_2(x)
+        x = self.residual_block_2(x)
 
+        # 第三个下采样 + 残差模块，图像尺寸下降至 1/8，即 52*52，channel -> 256
         x = self.down_sample_block_3(x)
-        x = self.block_3(x)
+        x = self.residual_block_3(x)
+        yolo_outputs.append(x.clone())
 
+        # 第四个下采样 + 残差模块，图像尺寸下降至 1/16，即 26*26，channel -> 512
         x = self.down_sample_block_4(x)
-        x = self.block_4(x)
+        x = self.residual_block_4(x)
+        yolo_outputs.append(x.clone())
 
+        # 第五个下采样 + 残差模块，图像尺寸下降至 1/32，即 13*13，channel -> 1024
         x = self.down_sample_block_5(x)
-        x = self.block_5(x)
+        x = self.residual_block_5(x)
+        yolo_outputs.append(x.clone())
 
+        # 分类任务的输出模块，YOLO不需要
         x = self.final_block(x)
-        return x
+
+        if model_type == "classification":
+            return x
+        else:
+            return yolo_outputs
 
     @staticmethod
     def get_residual_block(

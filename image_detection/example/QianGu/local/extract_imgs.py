@@ -1,7 +1,7 @@
 """" 读取一个路径下的所有视频，提取图像。并根据图像相似度，进行过滤； """
 import os
 import threading
-from image_classification.utils import extract_img_from_mp4
+from image_detection.utils import extract_img_from_mp4
 
 
 def main_extract_img(
