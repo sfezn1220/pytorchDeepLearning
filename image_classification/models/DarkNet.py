@@ -3,7 +3,7 @@
 import torch.nn as nn
 
 
-class BasicBlock(nn.Module):
+class CBLBlock(nn.Module):
     """ DarkNet 基础的模块：conv + BN + LeakyReLU """
 
     def __init__(self, in_channel, out_channel, kernel_size=3, stride=1):
@@ -24,12 +24,13 @@ class BasicBlock(nn.Module):
         return x
 
 
-class ResidualBlock(nn.Module):
+class ResBlock(nn.Module):
     """单个基础的 Residual 模块，包含2组 conv + BN + LeakyReLU 组合，以及残差连接； """
-    def __init__(self, in_out_channel):
+    def __init__(self, in_channel, out_channel=-1):
         super().__init__()
-        self.in_out_channel = in_out_channel  # 输入、输出 通道数
-        self.mid_channel = in_out_channel // 2  # 中间结果的通道数
+        self.in_channel = in_channel  # 输入 通道数
+        self.mid_channel = in_channel // 2  # 中间结果的通道数
+        self.out_channel = in_channel if out_channel == -1 else out_channel
 
         self.block = self.get_residual_block()
 
@@ -43,11 +44,11 @@ class ResidualBlock(nn.Module):
         layers = nn.Sequential()
         # 1*1 conv + BN + ReLU
         layers.append(
-            BasicBlock(self.in_out_channel, self.mid_channel, kernel_size=1, stride=1)
+            CBLBlock(self.in_channel, self.mid_channel, kernel_size=1, stride=1)
         )
         # 3*3 conv + BN + ReLU
         layers.append(
-            BasicBlock(self.mid_channel, self.in_out_channel, kernel_size=3, stride=1)
+            CBLBlock(self.mid_channel, self.out_channel, kernel_size=3, stride=1)
         )
         return layers
 
@@ -129,8 +130,9 @@ class DarkNet53(nn.Module):
         blocks = nn.Sequential()
         for block_i in range(num_blocks):
             blocks.append(
-                ResidualBlock(
-                    in_out_channel=in_out_channel,
+                ResBlock(
+                    in_channel=in_out_channel,
+                    out_channel=in_out_channel,
                 )
             )
         return blocks
@@ -143,7 +145,7 @@ class DarkNet53(nn.Module):
         """ DarkNet 的下采样模块，使用3*3卷积、不使用pooling层；"""
         blocks = nn.Sequential()
         blocks.append(
-            BasicBlock(
+            CBLBlock(
                 in_channel=in_channel,
                 out_channel=out_channel,
                 kernel_size=3,
@@ -156,7 +158,7 @@ class DarkNet53(nn.Module):
         """ ResNet的第一个模块；"""
         layers = nn.Sequential()
         layers.append(
-            BasicBlock(
+            CBLBlock(
                 in_channel=self.in_channel,
                 out_channel=self.mid_channels[0],
                 kernel_size=3,

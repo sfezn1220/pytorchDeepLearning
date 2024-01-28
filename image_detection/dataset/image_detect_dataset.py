@@ -129,7 +129,7 @@ def get_image_dataloader(
 
 if __name__ == "__main__":
     # config 文件
-    conf_file = "../example/QianGu/configs/yolo_demo.yaml"
+    conf_file = "../example/QianGu/configs/yolov3_demo.yaml"
     with open(conf_file, 'r', encoding='utf-8') as r1:
         configs = yaml.load(r1, Loader=yaml.FullLoader)
 

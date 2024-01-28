@@ -3,7 +3,7 @@
 gpu: 0
 lr: 1e-4
 final_lr: 1e-5
-batch_size: 32
+batch_size: 8
 epochs: 50
 ckpt_path: "F:\\models_images_detect\\yolov3_demo"
 
