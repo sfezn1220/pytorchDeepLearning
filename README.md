@@ -35,6 +35,7 @@ conda install tqdm
 conda install pydub -c conda-forge
 conda install Pillow
 
+pip install pillow-avif-plugin
 pip install pyloudnorm jieba pyyaml sox
 pip install pypinyin
 pip install imageio

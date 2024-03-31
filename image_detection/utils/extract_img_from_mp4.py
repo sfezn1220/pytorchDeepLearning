@@ -16,9 +16,9 @@ def extract_img_from_mp4(
 ):
     """
     从mp4文件中，提取出每一帧图像；
-    :param input_mp4_file: 输入的mp3文件的路径；
+    :param input_mp4_file: 输入的mp4文件的路径；
     :param output_dir: 输出路径；
-    :param prefix: 输出图像的文件民的前缀；
+    :param prefix: 输出图像的文件名的前缀；
     :param start_sec: 从第几秒开始；
     :param end_sec: 到第几 秒结束；
     :param ssim_score_threshold: 判断图像和前一帧的相似度的阈值；
@@ -51,7 +51,6 @@ def extract_img_from_mp4(
 
     # 从第几帧开始，如果和前面一张图像的相似度较高，就不提取
     last_image = None
-    # for frame_num in tqdm.tqdm(range(start_frame, end_frame)):
     for frame_num in range(start_frame, end_frame):
         # 获取一帧图像
         success, image = cap.read()

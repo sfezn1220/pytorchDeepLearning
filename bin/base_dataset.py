@@ -12,15 +12,17 @@ class BaseDataList(IterableDataset):
         """
         定义：基础的数据集；与任务无关；
         :param conf: 数据集的参数；以字典的形式转入；
-        :param data_type: ["train", "valid"]
+        :param data_type: ["train", "valid", "test"]
         :return: 可迭代的数据集；
         """
         super().__init__()
 
-        self.shuffle = conf['shuffle']  # 是否在每个 epoch 打乱数据集
+        self.shuffle = conf.get('shuffle', True)  # 是否在每个 epoch 打乱数据集
+        print(f"Dataloader.shuffle = {str(self.shuffle)}")
+
         self.epoch = -1  # 当前epoch数量；用于打乱数据集；
 
-        self.data_type = data_type  # train or valid dataset
+        self.data_type = data_type  # train valid or test dataset
 
         self.data_list = []  # 数据集存储在这里
 

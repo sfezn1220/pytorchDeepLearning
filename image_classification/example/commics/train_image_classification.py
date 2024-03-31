@@ -1,12 +1,5 @@
 """ 训练、测试的主函数； """
 
-import os
-import torch
-import copy
-import yaml
-import logging
-import torch.nn as nn
-
 from image_classification.executor import ImageClassificationExecutor
 
 

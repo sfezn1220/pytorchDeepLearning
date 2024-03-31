@@ -49,7 +49,7 @@ class ImageBaseDataList(BaseDataList):
         basename_list = []
 
         # 开始保存数据
-        print(f"开始保存 {self.data_type} 集的 numpy格式的训练数据：")
+        print(f"开始保存 {self.data_type}集的 numpy格式的训练数据：")
         for data in tqdm.tqdm(self.data_list):
             basename = data["basename"]
             # 查重

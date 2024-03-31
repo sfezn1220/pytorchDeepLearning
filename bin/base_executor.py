@@ -23,7 +23,7 @@ class BaseExecutor:
         os.environ['CUDA_VISIBLE_DEVICES'] = gpu
         if gpu == "-1":
             self.device = "cpu"
-            logging.info(f"Use device: CPU.")
+            logging.info(f"Use device: CPU -1.")
         elif gpu == "0":
             self.device = "cuda"
             logging.info(f"Use device: GPU {gpu}.")
@@ -37,7 +37,7 @@ class BaseExecutor:
         self.model = None
         self.train_data_loader = None
         self.valid_data_loader = None
-        self.pretrain_file = None
+        self.pretrain_file = None  # 预训练模型
 
         # 初始化：损失函数、优化函数、学习率计划、tensorboard
         self.criterion = None
@@ -47,7 +47,7 @@ class BaseExecutor:
 
         # 初始化：保存checkpoint的路径、最多同时保存多少个checkpoint
         self.ckpt_path = self.trainer_conf["ckpt_path"]
-        self.max_ckpt_save = int(self.trainer_conf["max_ckpt_save"])
+        self.max_ckpt_save = int(self.trainer_conf.get("max_ckpt_save", 5))
 
         # 初始化：最大epochs数量、最大steps数量、当前epochs（-1表示随便定个初始值）
         self.max_epochs = int(self.trainer_conf["epochs"])
@@ -56,7 +56,7 @@ class BaseExecutor:
         self.last_epoch = -1  # 预训练模型的epoch
 
         # 初始化：每多少个step展示一次日志
-        self.log_every_steps = int(self.trainer_conf["log_every_steps"])
+        self.log_every_steps = int(self.trainer_conf.get("log_every_steps", 10))
 
         # 初始化：模型的名称、日志名称
         self.name = name + "-" if len(name) > 0 else ""
@@ -129,7 +129,7 @@ class BaseExecutor:
                 file_name = str(file_name)
                 full_path = os.path.join(self.ckpt_path, file_name)  # 绝对路径，可能是多余的权重文件、中间结果等；
                 if os.path.exists(full_path):
-                    if os.path.isfile(full_path):  # 如果是文件，直接删除
+                    if os.path.isfile(full_path):  # 如果是文件，直接删除；
                         os.remove(full_path)
                     elif os.path.isdir(full_path):  # 如果是文件夹，先删除里面的文件，再删除文件夹本身；
                         for f in os.listdir(full_path):
