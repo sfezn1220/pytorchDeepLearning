@@ -48,6 +48,6 @@ def avif2png(
 
 if __name__ == "__main__":
     avif2png(
-        input_file_or_dir="G:\\Images\\10.todo\\27_崩铁_图片\\崩铁_三月七",
+        input_file_or_dir="D:\\Desktop\\芙莉莲",
         delete_ori_img=True,
     )

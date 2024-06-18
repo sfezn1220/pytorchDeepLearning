@@ -9,6 +9,8 @@ from text_to_speech.fastspeech2.conformer import ConformerEncoder, ConformerDeco
 from text_to_speech.fastspeech2.length_regulator import LengthRegulator
 from text_to_speech.fastspeech2.variant_predictor import VariantPredictor
 
+from text_to_speech.utils.get_mask import get_attention_mask
+
 
 class FastSpeech2(nn.Module):
     """ FastSpeech2 声学模型；"""
@@ -90,7 +92,7 @@ class FastSpeech2(nn.Module):
         :return:
         """
 
-        phoneme_mask = self.get_phoneme_mask(phoneme_ids).transpose(1, 2)  # [batch, 1, time]
+        phoneme_mask = get_attention_mask(phoneme_ids).unsqueeze(-1).transpose(1, 2)  # [batch, 1, time]
         phoneme_embedded = self.get_phoneme_embedding(phoneme_ids).transpose(1, 2)  # [batch, channel, time]
 
         # encoder
@@ -179,16 +181,6 @@ class FastSpeech2(nn.Module):
         outputs = torch.concat([encoder_outputs, speaker_embedding], dim=1)  # [batch, channel * 2, time]
         outputs = self.linear_speaker_embedding(outputs.transpose(1, 2)).transpose(2, 1)  # [batch, channel, time]
         return outputs * phoneme_mask
-
-    @staticmethod
-    def get_phoneme_mask(phoneme_ids):
-        """
-        输入音素序列的mask，用于后续的 attention；
-        :param phoneme_ids: [batch, time] 输入的音素序列；
-        :return: [batch, time] 与输入的尺寸相同，当音素=0时取0，当音素!=0时取1；
-        """
-        mask = torch.not_equal(phoneme_ids, 0)
-        return mask.unsqueeze(-1).int()
 
 
 class PostNet(nn.Module):
