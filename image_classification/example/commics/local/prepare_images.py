@@ -315,12 +315,24 @@ def split_train_test(
     min_width = 1e10
     min_size = 1e10
 
+    # 先检查下是否所有类别都在 map 里
+    for scene in os.listdir(test_data_dir):
+        scene = str(scene)
+        if not os.path.isdir(os.path.join(test_data_dir, scene)):
+            continue
+        for character in os.listdir(os.path.join(test_data_dir, scene)):
+            character = str(character).replace("动画_", "_")
+            assert character in spk_to_id_dict, f"不在 map 里的类别：{character}"
+
     # 遍历每个有测试数据的场景、写入 label 文件：
     with open(label_path, 'w', encoding='utf-8') as w1:
         w1.write("\t".join(["character_id", "path", "train_or_test"]) + "\n")
 
         for scene in tqdm.tqdm(os.listdir(test_data_dir), desc="场景数量"):
             scene = str(scene)
+
+            if not os.path.isdir(os.path.join(test_data_dir, scene)):
+                continue
 
             # 遍历当前场景下的每个类别：
             for character in tqdm.tqdm(
@@ -406,8 +418,8 @@ def split_train_test(
 
 
 if __name__ == "__main__":
-    start_stage = 2
-    stop_stage = 2
+    start_stage = 3
+    stop_stage = 3
 
     # stage 0: 将一批新到的数据，合并到所有原始数据的公共文件夹中；
     if 0 <= start_stage <= 0:
@@ -434,4 +446,13 @@ if __name__ == "__main__":
             new_data_dir="G:\Images\\2.norm_rename",
             label_path="G:\Images\\2.labeled_0622.txt",
             spk_map_file="G:\Images\\spk-map.txt",
+        )
+
+    # stage 3: label 文件 -> json label 文件；
+    if 3 <= start_stage <= 3:
+        label_file_to_json(
+            read_file="G:\Images\\2.labeled_0622.txt",
+            write_file="G:\Images\\3.labeled_json_0622.txt",
+            spk_map_file="G:\Images\\spk-map.txt",
+            valid_max_cnt=1000,
         )
