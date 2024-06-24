@@ -9,12 +9,12 @@ def main():
     # torch.cuda.set_per_process_memory_fraction(0.95, 0)
 
     trainer = ImageClassificationExecutor(
-        conf_file=f"./configs/darknet/darknet_ft3.yaml",
+        conf_file=f"./configs/darknet/darknet_ft4.yaml",
     )
 
-    # trainer.train_data_loader.dataset.save_images()
-    # trainer.valid_data_loader.dataset.save_images()
-    # trainer.test_data_loader.dataset.save_images()
+    trainer.train_data_loader.dataset.save_images()
+    trainer.valid_data_loader.dataset.save_images()
+    trainer.test_data_loader.dataset.save_images()
 
     trainer.run()
 
