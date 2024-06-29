@@ -1,4 +1,5 @@
 """ 定义：图像相关的数据集；"""
+import copy
 import os
 import tqdm
 
@@ -51,7 +52,11 @@ class ImageBaseDataList(BaseDataList):
         # 开始保存数据
         print(f"开始保存 {self.data_type}集的 numpy格式的训练数据：")
         for data in tqdm.tqdm(self.data_list):
-            basename = data["basename"]
+
+            # 深拷贝，避免读取到的图片全部保留到 self.data_list 中，以避免内存增长；
+            data_copy = copy.deepcopy(data)
+
+            basename = data_copy["basename"]
             # 查重
             if basename not in basename_list:
                 basename_list.append(basename)
@@ -63,14 +68,12 @@ class ImageBaseDataList(BaseDataList):
             if os.path.exists(save_path):
                 continue
 
-            img = cv2.imread(data["path"])
-            data["image"] = img
+            img = cv2.imread(data_copy["path"])
+            data_copy["image"] = img
 
-            data_np = dict2numpy(data)  # 转换成特定格式的np.array
+            data_np = dict2numpy(data_copy)  # 转换成特定格式的np.array
             np.savez(file=save_path, data=data_np)
 
-            del data_np
-            del data
+            del data_copy, data_np
 
-        del basename_list
         return
