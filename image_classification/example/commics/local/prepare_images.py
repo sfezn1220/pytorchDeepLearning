@@ -316,6 +316,7 @@ def split_train_test(
     min_size = 1e10
 
     # 先检查下是否所有类别都在 map 里
+    all_character_list = []
     for scene in os.listdir(test_data_dir):
         scene = str(scene)
         if not os.path.isdir(os.path.join(test_data_dir, scene)):
@@ -323,6 +324,11 @@ def split_train_test(
         for character in os.listdir(os.path.join(test_data_dir, scene)):
             character = str(character).replace("动画_", "_")
             assert character in spk_to_id_dict, f"不在 map 里的类别：{character}"
+            all_character_list.append(character)
+    # 再检查哪些类别的数量不足：
+    for character in spk_to_id_dict:
+        if character not in all_character_list:
+            print(f"训练数据不足的 character：{character}")
 
     # 遍历每个有测试数据的场景、写入 label 文件：
     with open(label_path, 'w', encoding='utf-8') as w1:

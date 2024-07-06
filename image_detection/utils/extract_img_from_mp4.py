@@ -51,7 +51,7 @@ def extract_img_from_mp4(
 
     # 从第几帧开始，如果和前面一张图像的相似度较高，就不提取
     last_image = None
-    for frame_num in range(start_frame, end_frame):
+    for frame_num in tqdm.tqdm(range(start_frame, end_frame)):
         # 获取一帧图像
         success, image = cap.read()
         if success is False:

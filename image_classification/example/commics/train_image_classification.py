@@ -12,13 +12,13 @@ def main():
         conf_file=f"./configs/darknet/darknet_ft4.yaml",
     )
 
-    trainer.train_data_loader.dataset.save_images()
+    # trainer.train_data_loader.dataset.save_images()
     # trainer.valid_data_loader.dataset.save_images()
     # trainer.test_data_loader.dataset.save_images()
 
-    # trainer.run()
+    trainer.run()
 
-    # trainer.forward_one_epoch(forward_type="test")
+    trainer.forward_one_epoch(forward_type="test")
 
     return
 

@@ -10,7 +10,7 @@ ckpt_path: "F:\\models_images\\darknet53_ft4"
 train_data: "G:\\Images\\3.labeled_json_0622.train.txt"
 valid_data: "G:\\Images\\3.labeled_json_0622.valid.txt"
 test_data: "G:\\Images\\3.labeled_json_0622.test.txt"
-n_classes: 210
+n_classes: 220
 input_shape: [416, 416]
 
 max_ckpt_save: 3  # 最多同时存储这么多 ckpt 文件
