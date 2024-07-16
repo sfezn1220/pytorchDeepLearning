@@ -40,6 +40,7 @@ pip install pyloudnorm jieba pyyaml sox
 pip install pypinyin
 pip install imageio
 pip install textgrid
+pip install pandas  openpyxl
 pip install tensorboard tensorboardX
 
 # vits 所需；需要先安装 Visual Studio
