@@ -166,16 +166,40 @@ class Dataset:
             except Exception as e:
                 self._remove_file(ori_full_path)
                 print(f"skip and delete ERROR \"{e}\" img: \"{ori_full_path}\"\"")
-            # stage 3 TODO 统计每个角色的训练集数量、测试集数量
-            # stage 4 TODO 测试集不足的数据，自动生成测试集
-            # stage 5 TODO 每个角色，任意两个图片，去重
 
         print(f"Done! norm_dir")
         return
 
+    def divide_train_test(self, file_list: list[ImgItem]):
+        """ 统计每个角色的训练集数量、测试集数量；测试集不足的数据，自动生成测试集 """
+        charactor_train_map = {}
+        charactor_test_map = {}
+        for img_item in tqdm.tqdm(file_list, desc="正在划分训练集和测试集..."):
+            # 拼接：角色唯一名称
+            charactor_full = "_".join([img_item.anime_type, img_item.anime_dir, img_item.charactor])
+            charactor_train_map.setdefault(charactor_full, [])
+            charactor_test_map.setdefault(charactor_full, [])
+            # 收集训练集和测试集
+            if str(img_item.file_name).startswith("train"):
+                charactor_train_map[charactor_full].append(img_item.file_name)
+            elif str(img_item.file_name).startswith("test"):
+                charactor_test_map[charactor_full].append(img_item.file_name)
+            else:
+                raise ValueError(f"这个文件既不是测试集也不是训练集：{img_item.file_name}")
+            # TODO 划分测试集
+            # TODO 记录到excel文件中
+        return
+
     def main(self):
+        # stage 1 收集所有文件
         file_list = self._collect_all_files("G:\\Images")
+        # stage 2 规范化命名
         self.norm_dir(file_list)
+        # stage 3 ing 统计每个角色的训练集数量、测试集数量；测试集不足的数据，自动生成测试集
+        del file_list
+        file_list = self._collect_all_files("G:\\Images")
+        self.divide_train_test(file_list)
+        # stage 4 TODO 每个角色，任意两个图片，去重
 
         return
 
