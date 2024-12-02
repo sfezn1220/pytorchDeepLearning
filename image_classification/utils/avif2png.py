@@ -54,6 +54,6 @@ def avif2png(
 
 if __name__ == "__main__":
     avif2png(
-        input_file_or_dir="G:\\Images\\动画\\原神\\千织",
+        input_file_or_dir="G:\\Images\\动画\\原神\\艾梅莉埃",
         delete_ori_img=True,
     )

@@ -31,6 +31,10 @@ class Dataset:
         self.output_root_dir = "G:\\Images"
         # 随机字符的长度
         self.random_length = 11
+        # 测试集的最少数量
+        self.test_data_min = 10
+        # 训练集的最少数量
+        self.train_data_min = 50
         return
 
     def _remove_file(self, file_path):
@@ -172,6 +176,7 @@ class Dataset:
 
     def divide_train_test(self, file_list: list[ImgItem]):
         """ 统计每个角色的训练集数量、测试集数量；测试集不足的数据，自动生成测试集 """
+        # 统计每个角色的训练集数量、测试集数量
         charactor_train_map = {}
         charactor_test_map = {}
         for img_item in tqdm.tqdm(file_list, desc="正在划分训练集和测试集..."):
@@ -181,13 +186,43 @@ class Dataset:
             charactor_test_map.setdefault(charactor_full, [])
             # 收集训练集和测试集
             if str(img_item.file_name).startswith("train"):
-                charactor_train_map[charactor_full].append(img_item.file_name)
+                charactor_train_map[charactor_full].append(img_item)
             elif str(img_item.file_name).startswith("test"):
-                charactor_test_map[charactor_full].append(img_item.file_name)
+                charactor_test_map[charactor_full].append(img_item)
             else:
                 raise ValueError(f"这个文件既不是测试集也不是训练集：{img_item.file_name}")
-            # TODO 划分测试集
-            # TODO 记录到excel文件中
+        del img_item, charactor_full
+        # 测试集不足的数据，自动生成测试集
+        need_delete_charactor = []
+        for charactor, train_list in tqdm.tqdm(charactor_train_map.items(), desc="正在调整训练集和测试集的比例..."):
+            test_list = charactor_test_map[charactor]
+            # 如果测试集数量较少
+            if len(test_list) < self.test_data_min:
+                random.shuffle(train_list)
+                for img_item in train_list[:self.test_data_min-len(test_list)]:
+                    ori_full_path = img_item.file_full_path
+                    new_full_path = os.path.join(os.path.dirname(ori_full_path), os.path.basename(ori_full_path).replace("train", "test"))
+                    self._copy_and_norm(ori_full_path, new_full_path, delete_origin_file=True)
+            # 如果此时训练集数量较少
+            if len(train_list) < self.train_data_min:
+                print(f"去掉训练数据少于{self.train_data_min}的角色：{charactor}")
+                need_delete_charactor.append(charactor)
+        # 这些数据不够多，不用做训练和测试
+        for charactor in need_delete_charactor:
+            charactor_train_map.pop(charactor)
+            charactor_test_map.pop(charactor)
+
+        # TODO 记录到excel文件中
+        all_item_list = []
+        for charactor in charactor_train_map.keys():
+            item = {
+                "全名": charactor,
+                "训练集数量": len(charactor_train_map.get(charactor, [])),
+                "测试集数量": len(charactor_test_map.get(charactor, [])),
+            }
+            all_item_list.append(item)
+
+        # TODO 形成训练集和测试集
         return
 
     def main(self):
